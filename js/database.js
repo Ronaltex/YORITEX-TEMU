@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient as createSupabaseClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
 const isPlaceholder = value => !value || value.includes('PEGA_AQUI');
@@ -8,7 +8,7 @@ let client;
 export function db() {
   if (!isConfigured()) throw new Error('Supabase todavía no está configurado.');
   if (!client) {
-    client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    client = createSupabaseClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
   }
