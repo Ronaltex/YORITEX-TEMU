@@ -37,18 +37,38 @@ function wrap(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
 }
 
 export async function generateInvoiceBlob(detail) {
+  const renderScale = 2;
+  const captureUrls = Array.isArray(detail.captureUrls) ? detail.captureUrls.filter(Boolean) : [];
+  const captureCount = captureUrls.length;
+  const columns = captureCount <= 1 ? 1 : captureCount === 2 ? 2 : 3;
+  const rows = captureCount ? Math.ceil(captureCount / columns) : 0;
+  const gap = 25;
+  const captureWidth = (910 - gap * (columns - 1)) / columns;
+  const captureHeight = captureCount === 1 ? 720 : captureCount === 2 ? 560 : 420;
+  const captureTop = 505;
+  const captureAreaHeight = captureCount ? rows * captureHeight + (rows - 1) * gap : 74;
+  const captureAreaEnd = captureTop + captureAreaHeight;
+  const summaryTitleY = captureAreaEnd + 60;
+  const valuesStartY = summaryTitleY + 50;
+  const valuesBottom = valuesStartY + 166;
+  const incidentTop = valuesBottom + 35;
+  const balanceY = detail.incidentText ? incidentTop + 110 : valuesBottom + 75;
+  const whiteBottom = balanceY + 148;
+  const footerY = whiteBottom + 25;
+  const logicalHeight = footerY + 50;
   const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1350;
+  canvas.width = 1080 * renderScale;
+  canvas.height = logicalHeight * renderScale;
   const ctx = canvas.getContext('2d');
+  ctx.scale(renderScale, renderScale);
   const [logoResult, watermarkResult, ...captureResults] = await Promise.allSettled([
     loadImage('assets/yori-tex-badge.png'),
     loadImage('assets/yori-tex-watermark.png'),
-    ...detail.captureUrls.slice(0, 3).map(loadImage)
+    ...captureUrls.map(loadImage)
   ]);
 
   ctx.fillStyle = '#f4f7fb';
-  ctx.fillRect(0, 0, 1080, 1350);
+  ctx.fillRect(0, 0, 1080, logicalHeight);
   ctx.fillStyle = '#06182d';
   ctx.fillRect(0, 0, 1080, 240);
   ctx.fillStyle = '#ff8200';
@@ -71,11 +91,12 @@ export async function generateInvoiceBlob(detail) {
   ctx.textAlign = 'left';
 
   ctx.fillStyle = '#fff';
-  ctx.fillRect(55, 275, 970, 1018);
+  ctx.fillRect(55, 275, 970, whiteBottom - 275);
   if (watermarkResult.status === 'fulfilled') {
     ctx.save();
     ctx.globalAlpha = .035;
-    ctx.drawImage(watermarkResult.value, 90, 305, 900, 900);
+    const watermarkY = 305 + Math.max(0, (whiteBottom - 305 - 900) / 2);
+    ctx.drawImage(watermarkResult.value, 90, watermarkY, 900, 900);
     ctx.restore();
   }
 
@@ -103,40 +124,55 @@ export async function generateInvoiceBlob(detail) {
   ctx.fillText('Capturas del pedido', 995, 482);
   ctx.textAlign = 'left';
 
-  for (let index = 0; index < 3; index += 1) {
-    const x = 85 + index * 305;
-    ctx.fillStyle = '#eef3f8';
-    ctx.fillRect(x, 505, 280, 220);
-    ctx.fillStyle = '#ff8200';
-    ctx.fillRect(x, 505, 280, 6);
+  if (!captureCount) {
+    ctx.fillStyle = '#f3f6f9';
+    ctx.fillRect(85, captureTop, 910, captureAreaHeight);
     ctx.strokeStyle = '#c6d1dd';
     ctx.setLineDash([9, 7]);
-    ctx.strokeRect(x + .5, 505.5, 279, 219);
+    ctx.strokeRect(85.5, captureTop + .5, 909, captureAreaHeight - 1);
     ctx.setLineDash([]);
-    const result = captureResults[index];
-    if (result?.status === 'fulfilled') {
+    ctx.fillStyle = '#7d8999';
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('No se adjuntaron capturas a este pedido', 540, captureTop + 44);
+    ctx.textAlign = 'left';
+  } else {
+    for (let index = 0; index < captureCount; index += 1) {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const x = 85 + column * (captureWidth + gap);
+      const y = captureTop + row * (captureHeight + gap);
       ctx.fillStyle = '#fff';
-      ctx.fillRect(x + 1, 511, 278, 213);
-      drawContained(ctx, result.value, x + 6, 516, 268, 203);
-    } else {
-      ctx.fillStyle = '#93a0af';
-      ctx.font = '700 18px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`CAPTURA ${index + 1}`, x + 140, 625);
-      ctx.textAlign = 'left';
+      ctx.fillRect(x, y, captureWidth, captureHeight);
+      ctx.fillStyle = '#ff8200';
+      ctx.fillRect(x, y, captureWidth, 6);
+      ctx.strokeStyle = '#c6d1dd';
+      ctx.setLineDash([9, 7]);
+      ctx.strokeRect(x + .5, y + .5, captureWidth - 1, captureHeight - 1);
+      ctx.setLineDash([]);
+      const result = captureResults[index];
+      if (result?.status === 'fulfilled') {
+        drawContained(ctx, result.value, x + 10, y + 16, captureWidth - 20, captureHeight - 26);
+      } else {
+        ctx.fillStyle = '#93a0af';
+        ctx.font = '700 18px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`No se pudo cargar la captura ${index + 1}`, x + captureWidth / 2, y + captureHeight / 2);
+        ctx.textAlign = 'left';
+      }
     }
   }
 
   ctx.fillStyle = '#06182d';
   ctx.font = '700 19px Arial';
-  ctx.fillText('RESUMEN DE VALORES', 85, 785);
+  ctx.fillText('RESUMEN DE VALORES', 85, summaryTitleY);
   ctx.fillStyle = '#7d8999';
   ctx.font = '17px Arial';
   ctx.textAlign = 'right';
-  ctx.fillText('USD', 995, 785);
+  ctx.fillText('USD', 995, summaryTitleY);
   ctx.textAlign = 'left';
 
-  let y = 835;
+  let y = valuesStartY;
   const lines = [
     ['Valor de productos', money(detail.adjustedProducts)],
     ['Total abonado', `− ${money(detail.paid)}`],
@@ -158,27 +194,27 @@ export async function generateInvoiceBlob(detail) {
 
   if (detail.incidentText) {
     ctx.fillStyle = '#fff0e1';
-    ctx.fillRect(85, 1045, 910, 78);
+    ctx.fillRect(85, incidentTop, 910, 78);
     ctx.fillStyle = '#934c12';
     ctx.font = '19px Arial';
-    wrap(ctx, detail.incidentText, 108, 1077, 865, 25, 2);
+    wrap(ctx, detail.incidentText, 108, incidentTop + 32, 865, 25, 2);
   }
 
   ctx.fillStyle = '#06182d';
-  ctx.fillRect(85, 1145, 910, 108);
+  ctx.fillRect(85, balanceY, 910, 108);
   ctx.fillStyle = '#ff9a31';
   ctx.font = '700 16px Arial';
-  ctx.fillText(detail.credit > 0 ? 'SALDO A FAVOR' : 'SALDO FINAL', 115, 1180);
+  ctx.fillText(detail.credit > 0 ? 'SALDO A FAVOR' : 'SALDO FINAL', 115, balanceY + 35);
   ctx.fillStyle = '#fff';
   ctx.font = '700 25px Arial';
-  ctx.fillText(detail.credit > 0 ? 'CRÉDITO DEL CLIENTE' : 'TOTAL PENDIENTE', 115, 1220);
+  ctx.fillText(detail.credit > 0 ? 'CRÉDITO DEL CLIENTE' : 'TOTAL PENDIENTE', 115, balanceY + 75);
   ctx.textAlign = 'right';
   ctx.font = '700 46px Arial';
-  ctx.fillText(money(detail.credit > 0 ? detail.credit : detail.due), 965, 1215);
+  ctx.fillText(money(detail.credit > 0 ? detail.credit : detail.due), 965, balanceY + 70);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#06182d';
   ctx.font = '700 20px Arial';
-  ctx.fillText('Gracias por confiar en YORI-TEX', 540, 1318);
+  ctx.fillText('Gracias por confiar en YORI-TEX', 540, footerY);
   ctx.textAlign = 'left';
 
   return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -204,4 +240,3 @@ export async function shareImage(blob, fileName) {
   await navigator.share({ files: [file], title: 'Detalle de pedido YORI-TEX' });
   return true;
 }
-

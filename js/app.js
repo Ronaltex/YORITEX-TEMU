@@ -559,9 +559,11 @@ async function openDetail(clientId) {
   $('#invoiceCredit').textContent = finance.credit > .009 ? `Saldo a favor del cliente: ${money(finance.credit)}` : '';
   $('#invoiceIncidents').hidden = !incidentText;
   $('#invoiceIncidents').textContent = incidentText;
-  $('#invoiceCaptures').innerHTML = Array.from({ length: 3 }, (_, index) => captureUrls[index]
-    ? `<figure><img src="${escapeHTML(captureUrls[index])}" alt="Captura ${index + 1}"></figure>`
-    : `<figure class="capture-placeholder">CAPTURA ${index + 1}</figure>`).join('');
+  const captureContainer = $('#invoiceCaptures');
+  captureContainer.className = `invoice-captures capture-count-${Math.min(captureUrls.length, 3)}`;
+  captureContainer.innerHTML = captureUrls.length
+    ? captureUrls.map((url, index) => `<figure><img src="${escapeHTML(url)}" alt="Captura ${index + 1}"></figure>`).join('')
+    : '<p class="no-captures">No se adjuntaron capturas a este pedido.</p>';
   showDialog('#detailDialog');
 }
 
@@ -572,8 +574,14 @@ async function invoiceBlob() {
 }
 
 $('#copyImageBtn').addEventListener('click', async () => {
-  try { await copyImage(await invoiceBlob()); toast('Imagen copiada. Ya puedes pegarla en WhatsApp.'); }
-  catch (error) { toast(error.message || 'Usa Descargar PNG en este dispositivo.'); }
+  const blob = await invoiceBlob();
+  try {
+    await copyImage(blob);
+    toast('Imagen copiada. Ya puedes pegarla en WhatsApp.');
+  } catch (error) {
+    downloadBlob(blob, `detalle-${state.activeClient.name.replace(/\s+/g, '-').toLowerCase()}.png`);
+    toast('El navegador no permitió copiarla; se descargó el PNG automáticamente.');
+  }
 });
 $('#downloadImageBtn').addEventListener('click', async () => downloadBlob(await invoiceBlob(), `detalle-${state.activeClient.name.replace(/\s+/g, '-').toLowerCase()}.png`));
 $('#shareImageBtn').addEventListener('click', async () => {
