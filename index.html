@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#06182d">
+  <meta name="description" content="Gestión privada de pedidos YORI-TEX">
+  <title>YORI-TEX · Pedidos</title>
+  <link rel="icon" type="image/png" href="assets/yori-tex-badge.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <section class="setup-screen" id="setupScreen" hidden>
+    <img src="assets/yori-tex-badge.png" alt="YORI-TEX">
+    <div>
+      <span>CONFIGURACIÓN PENDIENTE</span>
+      <h1>Conecta tu base de datos</h1>
+      <p>Abre <code>js/config.js</code> y pega la Project URL y la Publishable key de Supabase. Las instrucciones completas están en <code>README.md</code>.</p>
+    </div>
+  </section>
+
+  <main class="auth-screen" id="authScreen" hidden>
+    <section class="auth-brand">
+      <img src="assets/yori-tex-badge.png" alt="YORI-TEX Pedidos Temu">
+      <div><span>GESTIÓN PRIVADA</span><h1>Todos tus pedidos, pagos y entregas en un solo lugar.</h1><p>La información se sincroniza de forma segura entre tus dispositivos.</p></div>
+    </section>
+    <section class="login-card">
+      <p class="eyebrow">ACCESO YORI-TEX</p>
+      <h2>Iniciar sesión</h2>
+      <p>Ingresa con el usuario creado en Supabase.</p>
+      <form id="loginForm">
+        <label>Correo electrónico<input id="loginEmail" type="email" autocomplete="username" required></label>
+        <label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <p class="form-error" id="loginError" hidden></p>
+        <button class="primary wide" type="submit">Ingresar</button>
+      </form>
+      <button class="text-button" id="resetPasswordBtn">Olvidé mi contraseña</button>
+    </section>
+  </main>
+
+  <div class="app" id="app" hidden>
+    <aside class="sidebar">
+      <div class="brand"><img src="assets/yori-tex-badge.png" alt=""><span>YORI-TEX</span></div>
+      <div class="side-heading"><span>CIERRES DE PEDIDO</span><button id="newClosureBtn" title="Nuevo cierre">＋</button></div>
+      <nav class="closure-list" id="closureList"></nav>
+      <div class="sidebar-footer"><span class="sync-dot"></span><div><strong>Sincronización activa</strong><small id="sessionEmail"></small></div></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div><p class="eyebrow">CIERRE SELECCIONADO</p><h1 id="topTitle">Mis pedidos</h1></div>
+        <div class="top-actions"><button class="icon-button" id="refreshBtn" title="Actualizar">↻</button><button class="secondary" id="signOutBtn">Cerrar sesión</button></div>
+      </header>
+
+      <section class="empty-closure" id="noClosure" hidden>
+        <img src="assets/yori-tex-badge.png" alt="">
+        <h2>Crea tu primer cierre</h2>
+        <p>Por ejemplo: “Pedido del domingo 27 de septiembre”.</p>
+        <button class="primary" id="firstClosureBtn">Crear cierre</button>
+      </section>
+
+      <div id="closureWorkspace" hidden>
+        <section class="closure-head">
+          <div><div class="status-line"><span class="pill blue" id="closureStatus">ABIERTO</span><span id="closureDate"></span></div><h2 id="closureTitle"></h2><p>Clientes, compras, cobros y entregas correspondientes a este cierre.</p></div>
+          <div class="head-actions"><button class="secondary" id="newClientBtn">＋ Añadir persona</button><button class="primary" id="newPurchaseBtn">Realizar compra Temu</button></div>
+        </section>
+
+        <section class="metrics">
+          <article><span>Personas</span><strong id="metricClients">0</strong><small>En este cierre</small></article>
+          <article><span>Valor de productos</span><strong id="metricProducts">$0,00</strong><small>Luego de descuentos</small></article>
+          <article><span>Pagos recibidos</span><strong id="metricPayments">$0,00</strong><small>Incluye anticipos</small></article>
+          <article class="dark"><span>Costo real comprado</span><strong id="metricCosts">$0,00</strong><small>Compras Temu registradas</small></article>
+        </section>
+
+        <nav class="tabs" id="tabs">
+          <button class="active" data-tab="people">Personas <span id="clientCountBadge">0</span></button>
+          <button data-tab="purchases">Compras Temu <span id="purchaseCountBadge">0</span></button>
+          <button data-tab="profit">Ganancia privada</button>
+          <button data-tab="settings">Configuración</button>
+        </nav>
+
+        <section class="tab-panel active" id="peoplePanel">
+          <div class="panel-head"><div><h3>Personas de este cierre</h3><p>Los pendientes y saldos se calculan automáticamente.</p></div><div class="filters"><button class="active" data-filter="all">Todos</button><button data-filter="attention">Atención</button><button data-filter="completed">Finalizados</button></div></div>
+          <div class="client-list" id="clientList"></div>
+          <div class="empty-card" id="emptyClients" hidden><h3>Aún no hay personas</h3><p>Añade la primera cotización de este cierre.</p><button class="primary" id="emptyAddClient">Añadir persona</button></div>
+        </section>
+
+        <section class="tab-panel" id="purchasesPanel">
+          <div class="section-title"><div><h3>Compras realizadas en Temu</h3><p>Un mismo cliente puede estar dividido entre varias compras.</p></div><button class="primary" id="newPurchaseBtn2">＋ Registrar compra</button></div>
+          <div class="purchase-list" id="purchaseList"></div>
+          <div class="empty-card" id="emptyPurchases" hidden><h3>No hay compras registradas</h3><p>Cuando realices la compra en Temu, registra aquí qué parte de cada cliente fue incluida.</p></div>
+        </section>
+
+        <section class="tab-panel" id="profitPanel">
+          <div class="privacy-title"><div><span>PRIVADO</span><h3>Ganancia del cierre</h3><p>Esta información nunca aparece en el comprobante del cliente.</p></div><button class="secondary" id="toggleProfitBtn">Mostrar valores</button></div>
+          <div class="profit-grid blurred" id="profitGrid">
+            <article><span>Productos cobrados</span><strong id="profitRevenue">$0,00</strong></article>
+            <article><span>Costos reales</span><strong id="profitCosts">$0,00</strong></article>
+            <article><span>Ganancia en productos</span><strong id="profitProducts">$0,00</strong></article>
+            <article><span>Ingreso por libras</span><strong id="profitPounds">$0,00</strong></article>
+            <article class="profit-total"><span>GANANCIA TOTAL</span><strong id="profitTotal">$0,00</strong></article>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="settingsPanel">
+          <div class="section-title"><div><h3>Configuración general</h3><p>Los cálculos futuros usarán estos valores.</p></div></div>
+          <form class="settings-card" id="settingsForm">
+            <label>Valor por libra<div class="money-input"><span>$</span><input id="settingRate" type="number" min="0" step="0.01" required></div></label>
+            <label>Cobro mínimo<div class="money-input"><span>$</span><input id="settingMin" type="number" min="0" step="0.01" required></div><small>Se aplica aunque el peso sea menor a una libra.</small></label>
+            <label>Cobro máximo<div class="money-input"><span>$</span><input id="settingMax" type="number" min="0" step="0.01" required></div><small>El cliente nunca pagará más de este valor por libras.</small></label>
+            <button class="primary" type="submit">Guardar configuración</button>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="closureDialog"><form method="dialog" class="dialog-card" id="closureForm"><header><div><span>NUEVO CIERRE</span><h2>Crear cierre de pedido</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><label>Nombre del cierre<input id="newClosureTitle" placeholder="Pedido del domingo 27 de septiembre" required></label><label>Fecha anunciada<input id="newClosureDate" type="date" required></label><label>Nota <span class="optional">Opcional</span><textarea id="newClosureNotes" placeholder="Información interna de este cierre"></textarea></label></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Crear cierre</button></footer></form></dialog>
+
+  <dialog id="clientDialog"><form method="dialog" class="dialog-card large" id="clientForm"><header><div><span>NUEVA PERSONA</span><h2>Registrar cotización</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><div class="form-grid"><label>Nombre completo<input id="clientName" required></label><label>WhatsApp<input id="clientPhone" type="tel" placeholder="0991234567"></label><label>Valor total de productos<div class="money-input"><span>$</span><input id="clientProducts" type="number" min="0" step="0.01" required></div></label><label>Estimación de peso <span class="optional">No suma al total</span><div class="suffix-input"><input id="clientEstimatedWeight" type="number" min="0" step="0.01"><span>lb</span></div></label></div><label>Capturas de los productos<input id="clientCaptures" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></label><div class="file-preview" id="capturePreview"><p>Puedes seleccionar varias capturas a la vez.</p></div><label>Nota interna <span class="optional">Opcional</span><textarea id="clientNotes"></textarea></label><div class="quote-preview"><span>Anticipo mínimo sugerido<strong id="depositPreview">$0,00</strong></span><small>50 % del valor de los productos</small></div></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar persona</button></footer></form></dialog>
+
+  <dialog id="paymentDialog"><form method="dialog" class="dialog-card" id="paymentForm"><header><div><span>REGISTRAR PAGO</span><h2 id="paymentTitle">Pago del cliente</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><div class="summary-row"><span><small>Saldo actual</small><strong id="paymentCurrentDue">$0,00</strong></span><span><small id="paymentSuggestionLabel">Mínimo sugerido</small><strong id="paymentSuggested">$0,00</strong></span></div><label>Valor realmente transferido<div class="money-input"><span>$</span><input id="paymentAmount" type="number" min="0.01" step="0.01" required></div></label><label>Nota <span class="optional">Opcional</span><input id="paymentNote" placeholder="Banco, referencia u observación"></label></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar pago</button></footer></form></dialog>
+
+  <dialog id="purchaseDialog"><form method="dialog" class="dialog-card xlarge" id="purchaseForm"><header><div><span>COMPRA TEMU</span><h2>Registrar compra realizada</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><div class="form-grid three"><label>Fecha de compra<input id="purchaseDate" type="date" required></label><label>Cuenta utilizada<input id="purchaseAccount" placeholder="Principal · correo..." required></label><label>Costo real pagado<div class="money-input"><span>$</span><input id="purchaseCost" type="number" min="0" step="0.01" required></div></label></div><label>Nota interna <span class="optional">Opcional</span><input id="purchaseNotes"></label><h3 class="subheading">¿Qué entró en esta compra?</h3><div class="purchase-clients" id="purchaseClients"></div></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar y poner en tránsito</button></footer></form></dialog>
+
+  <dialog id="arrivalDialog"><form method="dialog" class="dialog-card" id="arrivalForm"><header><div><span>REGISTRAR LLEGADA</span><h2 id="arrivalTitle">Llegada del pedido</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><label>Parte del pedido<select id="arrivalPart" required></select></label><label>Resultado<select id="arrivalStatus"><option value="received">Llegó completo</option><option value="received_missing">Llegó, pero faltaron productos</option><option value="lost">Se perdió</option><option value="cancelled">Fue cancelado</option></select></label><div id="arrivalDetails" hidden><label>Detalle de lo ocurrido<textarea id="arrivalDescription" placeholder="Producto que no llegó o motivo"></textarea></label><label>Valor que se descontará<div class="money-input"><span>$</span><input id="arrivalDeduction" type="number" min="0" step="0.01" value="0"></div></label></div></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar llegada</button></footer></form></dialog>
+
+  <dialog id="weightDialog"><form method="dialog" class="dialog-card" id="weightForm"><header><div><span>REGISTRAR LIBRAS</span><h2 id="weightTitle">Peso del pedido</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><div class="warning-box" id="pendingPartsWarning" hidden><strong>Aún hay partes pendientes.</strong><p>Puedes esperar o registrar una entrega parcial.</p><label>¿Qué ocurrió con lo pendiente?<select id="pendingReason"><option value="">Selecciona un motivo</option><option>Sigue en tránsito; llegará después</option><option>Está demorado</option><option>El cliente pidió una entrega parcial</option><option>Otro motivo</option></select></label></div><div class="form-grid"><label>Peso de esta entrega<div class="suffix-input"><input id="weightAmount" type="number" min="0.01" step="0.01" required><span>lb</span></div></label><label>Tipo de entrega<select id="deliveryType"><option value="final">Entrega final</option><option value="partial">Entrega parcial</option></select></label></div><div class="weight-preview"><span><small>Peso acumulado</small><strong id="weightCumulative">0,00 lb</strong></span><span><small>Cobro total por libras</small><strong id="weightChargePreview">$0,00</strong></span><span><small>Saldo final estimado</small><strong id="weightDuePreview">$0,00</strong></span></div><p class="rule-note" id="weightRuleNote"></p><label>Nota <span class="optional">Opcional</span><textarea id="weightNote"></textarea></label></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar peso y ver detalle</button></footer></form></dialog>
+
+  <dialog id="detailDialog"><section class="dialog-card detail-dialog"><header><div><span>COMPROBANTE DEL CLIENTE</span><h2>Vista previa</h2></div><button class="dialog-x" data-close-dialog>×</button></header><div class="dialog-body"><article class="invoice" id="invoice"><img class="invoice-watermark" src="assets/yori-tex-watermark.png" alt=""><div class="invoice-header"><img src="assets/yori-tex-badge.png" alt="YORI-TEX"><div><strong>DETALLE DE PEDIDO</strong><small id="invoiceClosure">Cierre de pedido</small></div><span>YORI-TEX<br><small>COMPROBANTE</small></span></div><div class="invoice-client"><span><small>CLIENTE</small><strong id="invoiceName">Cliente</strong></span><span><small>ESTADO</small><strong id="invoiceStatus">Pedido registrado</strong></span></div><div class="invoice-label"><strong>PRODUCTOS CONFIRMADOS</strong><small>Capturas del pedido</small></div><div class="invoice-captures" id="invoiceCaptures"></div><div class="invoice-incidents" id="invoiceIncidents" hidden></div><div class="invoice-label"><strong>RESUMEN DE VALORES</strong><small>USD</small></div><div class="invoice-values"><div><span>Valor de productos</span><strong id="invoiceProducts">$0,00</strong></div><div><span>Total abonado</span><strong id="invoicePaid">− $0,00</strong></div><div><span id="invoiceWeightLabel">0,00 lb acumuladas</span><strong id="invoicePoundCharge">$0,00</strong></div><div class="invoice-total"><span><small>SALDO FINAL</small>TOTAL PENDIENTE</span><strong id="invoiceDue">$0,00</strong></div></div><div class="invoice-credit" id="invoiceCredit" hidden></div><footer><strong>Gracias por confiar en YORI-TEX</strong><small>Conserva este detalle como respaldo de tu pedido.</small></footer></article></div><footer class="detail-actions"><button class="secondary" id="copyImageBtn">Copiar imagen</button><button class="secondary" id="shareImageBtn">Compartir</button><button class="secondary" id="downloadImageBtn">Descargar PNG</button><button class="primary" id="whatsappDetailBtn">Enviar por WhatsApp</button></footer></section></dialog>
+
+  <dialog id="messageDialog"><section class="dialog-card"><header><div><span>MENSAJE DE PAGO</span><h2>Pago registrado</h2></div><button class="dialog-x" data-close-dialog>×</button></header><div class="dialog-body"><div class="message-preview" id="paymentMessage"></div></div><footer><button class="secondary" id="copyMessageBtn">Copiar mensaje</button><button class="primary" id="whatsappMessageBtn">Abrir WhatsApp</button></footer></section></dialog>
+
+  <dialog id="passwordDialog"><form method="dialog" class="dialog-card" id="passwordForm"><header><div><span>RECUPERAR ACCESO</span><h2>Crear nueva contraseña</h2></div></header><div class="dialog-body"><p>Escribe una contraseña nueva de al menos 10 caracteres.</p><label>Nueva contraseña<input id="newPassword" type="password" autocomplete="new-password" minlength="10" required></label><label>Repetir contraseña<input id="confirmPassword" type="password" autocomplete="new-password" minlength="10" required></label></div><footer><button class="primary" type="submit" value="default">Guardar contraseña</button></footer></form></dialog>
+
+  <div class="loading" id="loading" hidden><span></span><p>Guardando información…</p></div>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

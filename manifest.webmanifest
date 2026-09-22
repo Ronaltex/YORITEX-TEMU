@@ -1,0 +1,12 @@
+{
+  "name": "YORI-TEX Pedidos",
+  "short_name": "YORI-TEX",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#06182d",
+  "icons": [
+    { "src": "assets/yori-tex-badge.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
+

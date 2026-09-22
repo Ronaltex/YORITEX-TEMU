@@ -1,0 +1,21 @@
+YORI-TEX · INSTALACIÓN RÁPIDA
+
+1. Crea un proyecto en Supabase.
+2. Abre SQL Editor.
+3. Copia y ejecuta todo el archivo supabase/configuracion.sql.
+4. Ve a Authentication > Users y crea tu usuario con correo y contraseña.
+5. Desactiva los registros públicos de nuevos usuarios.
+6. Copia la Project URL y la Publishable key de Supabase.
+7. Pégalas en js/config.js.
+8. Crea un repositorio en GitHub.
+9. Sube todos los archivos y carpetas de este proyecto a la raíz del repositorio.
+10. Ve a Settings > Pages > Deploy from a branch > main > /(root) > Save.
+11. Copia la URL publicada de GitHub Pages.
+12. En Supabase, Authentication > URL Configuration, usa esa URL como Site URL y Redirect URL.
+13. Abre la aplicación e inicia sesión.
+
+IMPORTANTE:
+- Nunca pegues la service_role key en ningún archivo.
+- Nunca envíes tu contraseña.
+- Lee README.md para las instrucciones detalladas.
+
