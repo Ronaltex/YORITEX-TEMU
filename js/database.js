@@ -95,24 +95,36 @@ export async function updateClosure(id, values) {
 export async function createClient(values, files = []) {
   const { data: row, error } = await db().from('clients').insert(values).select().single();
   fail(error);
+  try { await addCaptures(row.id, files); }
+  catch (error) { return { ...row, uploadWarning: error.message }; }
+  return row;
+}
+
+export async function addCaptures(clientId, files = []) {
+  if (!files.length) return;
   const session = await getSession();
+  const { data: captures, error: readError } = await db().from('captures').select('sort_order').eq('client_id', clientId);
+  fail(readError);
+  const startOrder = Math.max(-1, ...(captures || []).map(row => row.sort_order)) + 1;
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     const extension = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const safeName = `${crypto.randomUUID()}.${extension}`;
-    const storagePath = `${session.user.id}/${row.id}/${safeName}`;
+    const storagePath = `${session.user.id}/${clientId}/${safeName}`;
     const { error: uploadError } = await db().storage.from('client-captures')
       .upload(storagePath, file, { upsert: false, contentType: file.type });
     fail(uploadError);
     const { error: captureError } = await db().from('captures').insert({
-      client_id: row.id,
+      client_id: clientId,
       storage_path: storagePath,
       original_name: file.name,
-      sort_order: index
+      sort_order: startOrder + index
     });
-    fail(captureError);
+    if (captureError) {
+      await db().storage.from('client-captures').remove([storagePath]);
+      fail(captureError);
+    }
   }
-  return row;
 }
 
 export async function addPayment(clientId, amount, paymentType, note = '') {
@@ -127,12 +139,12 @@ export async function addPayment(clientId, amount, paymentType, note = '') {
 }
 
 export async function createPurchase(closureId, values, parts) {
-  const { count, error: countError } = await db().from('purchases')
-    .select('*', { count: 'exact', head: true }).eq('closure_id', closureId);
+  const { data: previous, error: countError } = await db().from('purchases')
+    .select('purchase_number').eq('closure_id', closureId).order('purchase_number', { ascending: false }).limit(1);
   fail(countError);
   const { data: purchase, error } = await db().from('purchases').insert({
     closure_id: closureId,
-    purchase_number: (count || 0) + 1,
+    purchase_number: (previous[0]?.purchase_number || 0) + 1,
     purchase_date: values.purchase_date,
     account_label: values.account_label,
     real_cost: values.real_cost,
@@ -278,4 +290,83 @@ export function subscribeToChanges(callback) {
   tables.forEach(table => channel.on('postgres_changes', { event: '*', schema: 'public', table }, callback));
   channel.subscribe();
   return () => db().removeChannel(channel);
+}
+
+const editableFields = {
+  clients: ['name','phone','products_total','estimated_weight','notes','is_closed'],
+  order_closures: ['title','announced_date','status','notes'],
+  purchases: ['purchase_date','account_label','real_cost','notes'],
+  payments: ['amount','payment_type','note'],
+  weight_entries: ['weight_lbs','delivery_type','pending_reason','note'],
+  purchase_parts: ['assigned_value','result','status','missing_note','arrived_at'],
+  incidents: ['incident_type','description','deduction'],
+  captures: ['original_name','sort_order']
+};
+
+function checkTable(table) {
+  if (!Object.hasOwn(editableFields, table)) throw new Error('Tipo de registro no permitido.');
+}
+
+async function reconcilePurchases(ids) {
+  for (const id of new Set(ids)) {
+    const { data, error } = await db().from('purchase_parts').select('status').eq('purchase_id', id);
+    fail(error);
+    const pending = data.some(part => ['pending','in_transit'].includes(part.status));
+    const received = data.some(part => part.status === 'received');
+    const status = !data.length ? 'draft' : pending ? (received ? 'partially_received' : 'in_transit') : 'received';
+    const result = await db().from('purchases').update({ status }).eq('id',id);
+    fail(result.error);
+  }
+}
+
+export async function updateRecord(table, id, values) {
+  checkTable(table);
+  if (Object.keys(values).some(key => !editableFields[table].includes(key))) throw new Error('Campo no permitido.');
+  const { data, error } = await db().from(table).update(values).eq('id',id).select().single();
+  fail(error);
+  let warning;
+  if (table === 'purchase_parts') {
+    try { await reconcilePurchases([data.purchase_id]); }
+    catch { warning = 'La parte se guardó, pero no se pudo actualizar el estado de la compra. Reabre la parte y guarda para reintentarlo.'; }
+  }
+  return { data, warning };
+}
+
+export async function deleteRecord(table, id) {
+  checkTable(table);
+  let captures = [], purchaseIds = [];
+  if (table === 'clients' || table === 'order_closures') {
+    let clientIds = [id];
+    if (table === 'order_closures') {
+      const result = await db().from('clients').select('id').eq('closure_id',id);
+      fail(result.error);
+      clientIds = result.data.map(row => row.id);
+    }
+    if (clientIds.length) {
+      const result = await db().from('captures').select('storage_path').in('client_id',clientIds);
+      fail(result.error);
+      captures = result.data;
+    }
+    if (table === 'clients') {
+      const result = await db().from('purchase_parts').select('purchase_id').eq('client_id',id);
+      fail(result.error);
+      purchaseIds = result.data.map(row => row.purchase_id);
+    }
+  }
+  // SELECT confirms an actual deletion; an RLS-filtered no-op is not success.
+  const { data, error } = await db().from(table).delete().eq('id',id).select().single();
+  fail(error);
+  if (table === 'captures') captures = [data];
+  if (table === 'purchase_parts') purchaseIds = [data.purchase_id];
+  const warnings = [];
+  // Delete storage only after the database cascade succeeds, preserving files on DB failure.
+  if (captures.length) {
+    try {
+      const result = await db().storage.from('client-captures').remove(captures.map(row=>row.storage_path));
+      fail(result.error);
+    } catch { warnings.push('El registro se eliminó, pero quedaron archivos privados pendientes de limpieza en el almacenamiento.'); }
+  }
+  try { await reconcilePurchases(purchaseIds); }
+  catch { warnings.push('El registro se eliminó, pero no se pudo actualizar el estado de una compra.'); }
+  return { warning: warnings.join(' ') };
 }

@@ -1,3 +1,4 @@
+import { setupManagement } from './management.js';
 import {
   isConfigured, getSession, onAuthChange, signIn, signOut, sendPasswordReset, updatePassword,
   ensureSettings, updateSettings, listClosures, createClosure, createClient,
@@ -28,6 +29,8 @@ const state = {
   stopRealtime: null,
   reloadTimer: null
 };
+
+const management = setupManagement({ state, refresh: () => refreshClosures(state.selectedClosureId), toast, escapeHTML, money });
 
 function toast(message) {
   const element = $('#toast');
@@ -147,7 +150,7 @@ function renderClients() {
       ? `<strong class="credit">A favor ${money(finance.credit)}</strong>`
       : `<strong class="${finance.due > 0 ? 'due' : ''}">${money(finance.due)}</strong>`;
     const parts = finance.parts.map((part, index) => `<div class="part-chip"><strong>Parte ${index + 1} · ${money(part.assigned_value)}</strong><span>${partLabel(part)}${part.missing_note ? ` · ${escapeHTML(part.missing_note)}` : ''}</span>${['pending','in_transit'].includes(part.status) ? `<button data-action="arrival-part" data-client="${finance.client.id}" data-part="${part.id}">Registrar llegada</button>` : ''}</div>`).join('');
-    return `<article class="client-card ${finance.client.is_closed ? 'completed' : ''}" data-status="${status.key}"><div class="client-person"><span class="client-avatar">${initials(finance.client.name)}</span><div><strong>${escapeHTML(finance.client.name)}</strong><small>${finance.captures.length} captura(s) · ${escapeHTML(finance.client.phone || 'Sin teléfono')}</small></div></div><div class="client-status"><span class="pill ${status.cls}">${escapeHTML(status.label)}</span></div><div class="money-column"><span>Productos</span><strong>${money(finance.adjustedProducts)}</strong></div><div class="money-column"><span>Abonado</span><strong>${money(finance.paid)}</strong></div><div class="money-column"><span>Saldo</span>${creditOrDue}</div><div class="client-actions">${clientAction(finance)}<button data-action="detail" data-client="${finance.client.id}">Ver detalle</button>${finance.totalWeight ? `<button data-action="weight" data-client="${finance.client.id}">Registrar otra entrega</button>` : ''}</div>${parts ? `<div class="parts-strip">${parts}</div>` : ''}</article>`;
+    return `<article class="client-card ${finance.client.is_closed ? 'completed' : ''}" data-status="${status.key}"><div class="client-person"><span class="client-avatar">${escapeHTML(initials(finance.client.name))}</span><div><strong>${escapeHTML(finance.client.name)}</strong><small>${finance.captures.length} captura(s) · ${escapeHTML(finance.client.phone || 'Sin teléfono')}</small></div></div><div class="client-status"><span class="pill ${status.cls}">${escapeHTML(status.label)}</span></div><div class="money-column"><span>Productos</span><strong>${money(finance.adjustedProducts)}</strong></div><div class="money-column"><span>Abonado</span><strong>${money(finance.paid)}</strong></div><div class="money-column"><span>Saldo</span>${creditOrDue}</div><div class="client-actions">${clientAction(finance)}${management.button('clients',finance.client.id,'edit','Editar')}${management.button('clients',finance.client.id,'history','Historial')}${management.button('clients',finance.client.id,'delete','Eliminar')}<button data-action="detail" data-client="${finance.client.id}">Ver detalle</button>${finance.totalWeight ? `<button data-action="weight" data-client="${finance.client.id}">Registrar otra entrega</button>` : ''}</div>${parts ? `<div class="parts-strip">${parts}</div>` : ''}</article>`;
   }).join('');
 }
 
@@ -159,7 +162,7 @@ function renderPurchases() {
       const client = state.data.clients.find(item => item.id === part.client_id);
       return `<span>${escapeHTML(client?.name || 'Cliente')} · ${money(part.assigned_value)} · ${escapeHTML(partLabel(part))}</span>`;
     }).join('');
-    return `<article class="purchase-card"><div class="purchase-number">${purchase.purchase_number}</div><div><span class="pill blue">${escapeHTML(purchase.status.replace('_', ' ').toUpperCase())}</span><h4>Compra Temu #${purchase.purchase_number}</h4><p>${dateLabel(purchase.purchase_date)} · ${escapeHTML(purchase.account_label)}</p></div><div class="purchase-values"><span>Costo real</span><strong>${money(purchase.real_cost)}</strong></div><div class="purchase-parts">${chips || '<span>Sin partes vinculadas</span>'}</div></article>`;
+    return `<article class="purchase-card"><div class="purchase-number">${purchase.purchase_number}</div><div><span class="pill blue">${escapeHTML(purchase.status.replace('_', ' ').toUpperCase())}</span><h4>Compra Temu #${purchase.purchase_number}</h4><p>${dateLabel(purchase.purchase_date)} · ${escapeHTML(purchase.account_label)}</p></div><div class="purchase-values"><span>Costo real</span><strong>${money(purchase.real_cost)}</strong></div><div class="management-actions">${management.button('purchases',purchase.id,'edit','Editar compra')}${management.button('purchases',purchase.id,'delete','Eliminar compra')}</div><div class="purchase-parts">${chips || '<span>Sin partes vinculadas</span>'}</div></article>`;
   }).join('');
 }
 
@@ -172,6 +175,7 @@ function renderDashboard() {
   const costs = state.data.purchases.reduce((sum, item) => sum + number(item.real_cost), 0);
   const pounds = finances.reduce((sum, item) => sum + item.poundCharge, 0);
   const productProfit = products - costs;
+  $('#closureManagement').innerHTML = management.button('order_closures',closure.id,'edit','Editar cierre') + management.button('order_closures',closure.id,'delete','Eliminar cierre');
   $('#topTitle').textContent = closure.title;
   $('#closureTitle').textContent = closure.title;
   $('#closureDate').textContent = `Fecha anunciada: ${dateLabel(closure.announced_date)}`;
@@ -329,8 +333,14 @@ $('#clientCaptures').addEventListener('change', () => {
 
 $('#clientForm').addEventListener('submit', async event => {
   event.preventDefault();
+  if (event.target.dataset.saving) return;
+  const duplicate = state.data.clients.find(client => client.name.trim().toLocaleLowerCase() === $('#clientName').value.trim().toLocaleLowerCase());
+  if (duplicate && !confirm('Ya existe una persona con este nombre en el cierre. ¿Quieres crear otra de todas formas?')) return;
+  event.target.dataset.saving = 'true';
+  const submit = event.target.querySelector('[type=submit]');
+  submit.disabled = true;
   try {
-    await run(() => createClient({
+    const saved = await run(() => createClient({
       closure_id: state.selectedClosureId,
       name: $('#clientName').value.trim(),
       phone: $('#clientPhone').value.trim() || null,
@@ -340,7 +350,9 @@ $('#clientForm').addEventListener('submit', async event => {
     }, [...$('#clientCaptures').files]), 'Persona y capturas guardadas.');
     closeDialog('#clientDialog');
     await refreshSelected();
+    if (saved.uploadWarning) alert('La persona se guardó, pero algunas capturas no se subieron. Abre Historial para añadir las que faltan. No vuelvas a crear a la persona.\n\n' + saved.uploadWarning);
   } catch {}
+  finally { delete event.target.dataset.saving; submit.disabled = false; }
 });
 
 function getClient(id) {

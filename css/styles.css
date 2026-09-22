@@ -335,3 +335,15 @@ dialog:has(.detail-dialog) { width: min(880px, calc(100% - 28px)); }
   #detailDialog .dialog-body { padding: 0; }
   .invoice { border: 0; }
 }
+
+/* Edición e historial de registros */
+.management-actions { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.purchase-card > .management-actions { grid-column:1 / -1; }
+button.danger { color:#b42318; background:#fff1f0; border:1px solid #f4b4ae; border-radius:10px; padding:9px 12px; }
+.history-section { margin:20px 0; }
+.history-row { display:flex; gap:12px; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding:12px 0; }
+.history-row > span { overflow-wrap:anywhere; min-width:0; }
+.history-row > div { display:flex; flex-wrap:wrap; gap:6px; flex-shrink:0; }
+button:disabled { opacity:.55; cursor:wait; }
+#editRecordFields input[type=checkbox] { width:22px; height:22px; }
+@media(max-width:600px) { .history-row { align-items:flex-start; flex-direction:column; } }

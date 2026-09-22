@@ -66,6 +66,7 @@
           <div class="head-actions"><button class="secondary" id="newClientBtn">＋ Añadir persona</button><button class="primary" id="newPurchaseBtn">Realizar compra Temu</button></div>
         </section>
 
+        <div class="management-actions" id="closureManagement"></div>
         <section class="metrics">
           <article><span>Personas</span><strong id="metricClients">0</strong><small>En este cierre</small></article>
           <article><span>Valor de productos</span><strong id="metricProducts">$0,00</strong><small>Luego de descuentos</small></article>
@@ -134,6 +135,9 @@
 
   <dialog id="passwordDialog"><form method="dialog" class="dialog-card" id="passwordForm"><header><div><span>RECUPERAR ACCESO</span><h2>Crear nueva contraseña</h2></div></header><div class="dialog-body"><p>Escribe una contraseña nueva de al menos 10 caracteres.</p><label>Nueva contraseña<input id="newPassword" type="password" autocomplete="new-password" minlength="10" required></label><label>Repetir contraseña<input id="confirmPassword" type="password" autocomplete="new-password" minlength="10" required></label></div><footer><button class="primary" type="submit" value="default">Guardar contraseña</button></footer></form></dialog>
 
+  <dialog id="editRecordDialog"><form class="dialog-card" id="editRecordForm"><header><h2 id="editRecordTitle">Editar registro</h2><button type="button" class="dialog-x" data-close-dialog aria-label="Cerrar">×</button></header><div class="dialog-body"><p id="editRecordNote"></p><div id="editRecordFields"></div><p id="editRecordError" class="form-error" role="alert"></p></div><footer><button type="button" class="secondary" data-close-dialog>Cancelar</button><button type="submit" class="primary">Guardar cambios</button></footer></form></dialog>
+  <dialog id="historyDialog"><section class="dialog-card large"><header><h2 id="historyTitle">Historial</h2><button type="button" class="dialog-x" data-close-dialog aria-label="Cerrar">×</button></header><div class="dialog-body"><p>Corrige o elimina registros guardados. Los cambios actualizan el saldo y el comprobante.</p><div id="historyContent"></div><label>Añadir capturas<input type="file" id="captureUpload" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></label><button type="button" class="secondary" id="uploadCapturesBtn">Subir capturas</button><p id="historyError" class="form-error" role="alert"></p></div><footer><button type="button" class="secondary" data-close-dialog>Cerrar</button></footer></section></dialog>
+  <dialog id="captureViewDialog"><section class="dialog-card large"><header><h2>Captura</h2><button type="button" class="dialog-x" data-close-dialog aria-label="Cerrar">×</button></header><div class="dialog-body"><img id="captureImage" alt="Captura del pedido" style="max-width:100%;height:auto"></div></section></dialog>
   <div class="loading" id="loading" hidden><span></span><p>Guardando información…</p></div>
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="js/app.js"></script>
