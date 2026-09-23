@@ -1,3 +1,4 @@
+import { captureRows as getCaptureRows } from './invoice-layout.js';
 import { setupManagement } from './management.js';
 import {
   isConfigured, getSession, onAuthChange, signIn, signOut, sendPasswordReset, updatePassword,
@@ -572,9 +573,10 @@ async function openDetail(clientId) {
   $('#invoiceIncidents').hidden = !incidentText;
   $('#invoiceIncidents').textContent = incidentText;
   const captureContainer = $('#invoiceCaptures');
-  captureContainer.className = `invoice-captures capture-count-${Math.min(captureUrls.length, 3)}`;
+  captureContainer.className = `invoice-captures capture-count-${captureUrls.length}`;
+  const rowSizes = getCaptureRows(captureUrls.length).flatMap(size => Array(size).fill(size));
   captureContainer.innerHTML = captureUrls.length
-    ? captureUrls.map((url, index) => `<figure><img src="${escapeHTML(url)}" alt="Captura ${index + 1}"></figure>`).join('')
+    ? captureUrls.map((url, index) => `<figure style="grid-column:span ${6 / rowSizes[index]}"><img src="${escapeHTML(url)}" alt="Captura ${index + 1}"></figure>`).join('')
     : '<p class="no-captures">No se adjuntaron capturas a este pedido.</p>';
   showDialog('#detailDialog');
 }
@@ -582,6 +584,7 @@ async function openDetail(clientId) {
 async function invoiceBlob() {
   loading(true, 'Generando imagen…');
   try { return await generateInvoiceBlob(state.invoiceDetail); }
+  catch (error) { toast(error.message || 'No se pudo generar el comprobante.'); throw error; }
   finally { loading(false); }
 }
 

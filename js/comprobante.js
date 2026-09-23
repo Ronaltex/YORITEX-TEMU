@@ -1,3 +1,5 @@
+import { captureLayout, invoiceResolution } from './invoice-layout.js';
+
 const money = value => new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(Number(value) || 0);
 
 function loadImage(src) {
@@ -37,16 +39,16 @@ function wrap(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
 }
 
 export async function generateInvoiceBlob(detail) {
-  const renderScale = 2;
   const captureUrls = Array.isArray(detail.captureUrls) ? detail.captureUrls.filter(Boolean) : [];
   const captureCount = captureUrls.length;
-  const columns = captureCount <= 1 ? 1 : captureCount === 2 ? 2 : 3;
-  const rows = captureCount ? Math.ceil(captureCount / columns) : 0;
-  const gap = 25;
-  const captureWidth = (910 - gap * (columns - 1)) / columns;
-  const captureHeight = captureCount === 1 ? 720 : captureCount === 2 ? 560 : 420;
+  const [logoResult, watermarkResult, ...captureResults] = await Promise.allSettled([
+    loadImage('assets/yori-tex-badge.png'),
+    loadImage('assets/yori-tex-watermark.png'),
+    ...captureUrls.map(loadImage)
+  ]);
+  const layout = captureLayout(captureResults.map(result => result.status === 'fulfilled' ? result.value : null));
   const captureTop = 505;
-  const captureAreaHeight = captureCount ? rows * captureHeight + (rows - 1) * gap : 74;
+  const captureAreaHeight = layout.areaHeight;
   const captureAreaEnd = captureTop + captureAreaHeight;
   const summaryTitleY = captureAreaEnd + 60;
   const valuesStartY = summaryTitleY + 50;
@@ -56,17 +58,15 @@ export async function generateInvoiceBlob(detail) {
   const whiteBottom = balanceY + 148;
   const footerY = whiteBottom + 25;
   const logicalHeight = footerY + 50;
+  const resolution = invoiceResolution(captureCount, logicalHeight);
   const canvas = document.createElement('canvas');
-  canvas.width = 1080 * renderScale;
-  canvas.height = logicalHeight * renderScale;
+  canvas.width = resolution.width;
+  canvas.height = resolution.height;
   const ctx = canvas.getContext('2d');
-  ctx.scale(renderScale, renderScale);
-  const [logoResult, watermarkResult, ...captureResults] = await Promise.allSettled([
-    loadImage('assets/yori-tex-badge.png'),
-    loadImage('assets/yori-tex-watermark.png'),
-    ...captureUrls.map(loadImage)
-  ]);
-
+  if (!ctx) throw new Error('No se pudo crear el comprobante. Cierra otras pestañas y vuelve a intentarlo.');
+  ctx.scale(resolution.scale, resolution.scale);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = '#f4f7fb';
   ctx.fillRect(0, 0, 1080, logicalHeight);
   ctx.fillStyle = '#06182d';
@@ -138,10 +138,7 @@ export async function generateInvoiceBlob(detail) {
     ctx.textAlign = 'left';
   } else {
     for (let index = 0; index < captureCount; index += 1) {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const x = 85 + column * (captureWidth + gap);
-      const y = captureTop + row * (captureHeight + gap);
+      const { x, y, width: captureWidth, height: captureHeight } = layout.boxes[index];
       ctx.fillStyle = '#fff';
       ctx.fillRect(x, y, captureWidth, captureHeight);
       ctx.fillStyle = '#ff8200';
@@ -217,7 +214,14 @@ export async function generateInvoiceBlob(detail) {
   ctx.fillText('Gracias por confiar en YORI-TEX', 540, footerY);
   ctx.textAlign = 'left';
 
-  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      // Release the large backing store after encoding, including failed encodes.
+      canvas.width = canvas.height = 1;
+      if (blob) resolve(blob);
+      else reject(new Error('No se pudo generar la imagen. Cierra otras pestañas y vuelve a intentarlo.'));
+    }, 'image/png');
+  });
 }
 
 export function downloadBlob(blob, fileName) {
