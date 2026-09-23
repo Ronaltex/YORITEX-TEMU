@@ -51,42 +51,52 @@ export async function generateInvoiceBlob(detail) {
   fitText(ctx,detail.closureTitle,175,105,850,24,'#c6d2df',400);
   ctx.fillStyle='#fff';ctx.fillRect(35,165,1010,1120);
   if(watermark.status==='fulfilled') {
-    ctx.save();ctx.globalAlpha=.025;drawContained(ctx,watermark.value,110,450,860,800);ctx.restore();
+    ctx.save();ctx.globalAlpha=.12;ctx.filter="invert(1) grayscale(1) contrast(2)";drawContained(ctx,watermark.value,75,340,930,900);ctx.restore();
   }
   fitText(ctx,'CLIENTE',60,191,460,15,'#708096');
   fitText(ctx,detail.clientName,60,226,460,31);
   fitText(ctx,'ESTADO DEL PEDIDO',570,191,450,15,'#708096');
   fitText(ctx,detail.statusText,570,226,450,25);
-  ctx.fillStyle='#06182d';ctx.fillRect(60,245,960,108);
-  const credit=Number(detail.credit)>0;
-  fitText(ctx,credit?'SALDO A FAVOR':'TOTAL PENDIENTE',85,283,540,25,'#ff9a31');
-  fitText(ctx,credit?'Crédito del cliente':'Valor por pagar · USD',85,324,540,22,'#fff',400);
-  ctx.textAlign='right';
-  fitText(ctx,money(credit?detail.credit:detail.due),994,318,405,62,'#fff');
-  ctx.textAlign='left';
-  const metrics=[['PRODUCTOS',money(detail.adjustedProducts)],['ABONADO',money(detail.paid)],['LIBRAS · '+Number(detail.totalWeight||0).toFixed(2)+' lb',money(detail.poundCharge)]];
-  metrics.forEach(([label,value],i)=>{
-    const x=60+i*325;ctx.fillStyle='#edf2f7';ctx.fillRect(x,369,310,71);
-    fitText(ctx,label,x+15,391,280,15,'#708096');fitText(ctx,value,x+15,423,280,28);
-  });
-  fitText(ctx,'PRODUCTOS CONFIRMADOS',60,474,720,20);
-  ctx.textAlign='right';fitText(ctx,images.length+' captura(s)',1020,474,240,17,'#708096',400);ctx.textAlign='left';
+
+  fitText(ctx,'PRODUCTOS CONFIRMADOS',60,277,700,20);
+  ctx.textAlign='right';fitText(ctx,images.length+' captura(s)',1020,277,220,17,'#708096',400);ctx.textAlign='left';
   if(!images.length) {
-    ctx.textAlign='center';fitText(ctx,'No se adjuntaron capturas a este pedido',540,835,920,25,'#708096',400);ctx.textAlign='left';
+    ctx.textAlign='center';fitText(ctx,'No se adjuntaron capturas a este pedido',540,575,920,25,'#708096',400);ctx.textAlign='left';
   }
   images.forEach((image,index)=>{
     const box=layout.boxes[index];
-    ctx.fillStyle='#fff';ctx.fillRect(box.x,box.y,box.width,box.height);
+    // Frames follow each image's actual aspect ratio: no square placeholders.
+    ctx.drawImage(image,box.x,box.y,box.width,box.height);
     ctx.strokeStyle='#d5dee8';ctx.lineWidth=1;ctx.strokeRect(box.x,box.y,box.width,box.height);
-    const padding=Math.min(5,box.width/6,box.height/6);
-    drawContained(ctx,image,box.x+padding,box.y+padding,box.width-2*padding,box.height-2*padding);
   });
+  const summary=layout.summary;
+  const x=summary.x, right=x+summary.width, top=summary.y;
+  fitText(ctx,'DETALLE DE VALORES',x,top,summary.width,22);
+  const entries=[['Valor de productos',money(detail.adjustedProducts)]];
+  const paid=Number(detail.paid)||0;
+  if(paid!==0) entries.push([paid>0?'Abono recibido':'Devolución neta',(paid>0?'− ':'+ ')+money(Math.abs(paid))]);
+  entries.push(['Libras · '+Number(detail.totalWeight||0).toFixed(2)+' lb',(Number(detail.poundCharge)>0?'+ ':'')+money(detail.poundCharge)]);
+  const narrow=summary.width<500;
+  let lineY=top+52;
+  entries.forEach(([label,value])=>{
+    fitText(ctx,label,x,lineY,summary.width*.60,narrow?19:24,'#647287',400);
+    ctx.textAlign='right';fitText(ctx,value,right,lineY,summary.width*.37,narrow?23:26);ctx.textAlign='left';
+    ctx.fillStyle='#dce3eb';ctx.fillRect(x,lineY+17,summary.width,1);
+    lineY+=55;
+  });
+  const credit=Number(detail.credit)>0;
+  const balanceTop=lineY+3;
+  ctx.fillStyle='#06182d';ctx.fillRect(x,balanceTop,summary.width,100);
+  fitText(ctx,credit?'SALDO A FAVOR':'TOTAL PENDIENTE',x+18,balanceTop+30,summary.width-36,narrow?20:23,'#ff9a31');
+  ctx.textAlign='right';fitText(ctx,money(credit?detail.credit:detail.due),right-18,balanceTop+79,summary.width-36,narrow?42:48,'#fff');ctx.textAlign='left';
   if(detail.incidentText) {
-    ctx.fillStyle='#fff0e1';ctx.fillRect(60,1200,960,76);
-    let size=18,lines=noteLines(ctx,detail.incidentText,928,size);
-    while(lines.length*(size+2)>58 && size>8) lines=noteLines(ctx,detail.incidentText,928,--size);
-    ctx.save();ctx.beginPath();ctx.rect(72,1205,936,67);ctx.clip();ctx.fillStyle='#934c12';
-    lines.forEach((line,i)=>ctx.fillText(line,76,1219+i*(size+2)));ctx.restore();
+    const noteTop=balanceTop+119, noteWidth=summary.width;
+    let size=17,lines=noteLines(ctx,detail.incidentText,noteWidth,size);
+    const available=1280-noteTop;
+    while(lines.length*(size+3)>available && size>7) lines=noteLines(ctx,detail.incidentText,noteWidth,--size);
+    ctx.fillStyle='#934c12';
+    const lineHeight=Math.min(size+3,available/Math.max(1,lines.length));
+    lines.forEach((line,i)=>ctx.fillText(line,x,noteTop+size+i*lineHeight));
   }
   ctx.textAlign='center';fitText(ctx,'Gracias por confiar en YORI-TEX',540,1318,960,23);ctx.textAlign='left';
   return new Promise((resolve,reject)=>canvas.toBlob(blob=>{
