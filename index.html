@@ -71,13 +71,14 @@
           <article><span>Personas</span><strong id="metricClients">0</strong><small>En este cierre</small></article>
           <article><span>Valor de productos</span><strong id="metricProducts">$0,00</strong><small>Luego de descuentos</small></article>
           <article><span>Pagos recibidos</span><strong id="metricPayments">$0,00</strong><small>Incluye anticipos</small></article>
-          <article class="dark"><span>Costo real comprado</span><strong id="metricCosts">$0,00</strong><small>Compras Temu registradas</small></article>
+          <article class="dark"><span>Por cobrar</span><strong id="metricDue">$0,00</strong><small>Saldos pendientes de clientes</small></article>
         </section>
 
+        <section class="pending-panel" aria-labelledby="pendingTitle"><div class="section-title"><div><h3 id="pendingTitle">Pendientes <span id="pendingCount">0</span></h3><p>Recordatorios del cierre seleccionado.</p></div></div><div id="pendingList"></div></section>
         <nav class="tabs" id="tabs">
           <button class="active" data-tab="people">Personas <span id="clientCountBadge">0</span></button>
           <button data-tab="purchases">Compras Temu <span id="purchaseCountBadge">0</span></button>
-          <button data-tab="profit">Ganancia privada</button>
+          <button data-tab="profit">CMD</button>
           <button data-tab="settings">Configuración</button>
         </nav>
 
@@ -94,13 +95,21 @@
         </section>
 
         <section class="tab-panel" id="profitPanel">
-          <div class="privacy-title"><div><span>PRIVADO</span><h3>Ganancia del cierre</h3><p>Esta información nunca aparece en el comprobante del cliente.</p></div><button class="secondary" id="toggleProfitBtn">Mostrar valores</button></div>
-          <div class="profit-grid blurred" id="profitGrid">
-            <article><span>Productos cobrados</span><strong id="profitRevenue">$0,00</strong></article>
-            <article><span>Costos reales</span><strong id="profitCosts">$0,00</strong></article>
-            <article><span>Ganancia en productos</span><strong id="profitProducts">$0,00</strong></article>
-            <article><span>Ingreso por libras</span><strong id="profitPounds">$0,00</strong></article>
-            <article class="profit-total"><span>GANANCIA TOTAL</span><strong id="profitTotal">$0,00</strong></article>
+          <div class="privacy-title"><div><h3>CMD</h3><p id="cmdStatus">Panel cerrado.</p></div><button class="secondary" id="toggleProfitBtn" aria-expanded="false" aria-controls="profitGrid">Abrir panel</button></div>
+          <div id="profitGrid" hidden>
+            <p class="cmd-note">Cierre seleccionado · Cálculos con los costos registrados hasta ahora. Los importes de venta y libras no implican que ya estén cobrados.</p>
+            <div class="cmd-grid">
+              <article><span>Valor de productos</span><strong id="profitRevenue"></strong><small>Después de descuentos</small></article>
+              <article><span>Costo real de compras</span><strong id="profitCosts"></strong><small>Compras Temu de este cierre</small></article>
+              <article class="cmd-highlight"><span>Ganancia en productos</span><strong id="profitProducts"></strong><small id="productPercent"></small></article>
+              <article><span>Ingreso por libras</span><strong id="profitPounds"></strong><small id="poundPercent"></small></article>
+            </div>
+            <div class="cmd-total"><div><span>RESULTADO TOTAL</span><p>Productos + libras − costo de compras</p></div><div><strong id="profitTotal"></strong><small id="totalPercent"></small></div></div>
+            <p class="cmd-note" id="costPercentNote"></p>
+            <h3 class="subheading">Cobros del cierre</h3>
+            <div class="cmd-grid"><article><span>Total a cobrar</span><strong id="cmdRevenue"></strong><small>Productos + libras</small></article><article><span>Pagos recibidos</span><strong id="cmdPaid"></strong><small>Descontadas las devoluciones</small></article><article><span>Pendiente por cobrar</span><strong id="cmdDue"></strong><small>Suma de saldos pendientes</small></article><article><span>Saldos a favor</span><strong id="cmdCredit"></strong><small>Crédito de los clientes</small></article></div>
+            <h3 class="subheading">Costos por compra</h3><div id="cmdPurchases"></div>
+            <p class="cmd-note">Porcentaje sobre costo = ganancia ÷ costo real × 100. Libras: aporte sobre el mismo costo; no se descuenta un costo de transporte separado. Estos valores no aparecen en el comprobante.</p>
           </div>
         </section>
 

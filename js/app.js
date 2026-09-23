@@ -1,3 +1,4 @@
+import { financialSummary, pendingNotices } from './dashboard.js';
 import { captureRows as getCaptureRows } from './invoice-layout.js';
 import { setupManagement } from './management.js';
 import {
@@ -163,19 +164,22 @@ function renderPurchases() {
       const client = state.data.clients.find(item => item.id === part.client_id);
       return `<span>${escapeHTML(client?.name || 'Cliente')} · ${money(part.assigned_value)} · ${escapeHTML(partLabel(part))}</span>`;
     }).join('');
-    return `<article class="purchase-card"><div class="purchase-number">${purchase.purchase_number}</div><div><span class="pill blue">${escapeHTML(purchase.status.replace('_', ' ').toUpperCase())}</span><h4>Compra Temu #${purchase.purchase_number}</h4><p>${dateLabel(purchase.purchase_date)} · ${escapeHTML(purchase.account_label)}</p></div><div class="purchase-values"><span>Costo real</span><strong>${money(purchase.real_cost)}</strong></div><div class="management-actions">${management.button('purchases',purchase.id,'edit','Editar compra')}${management.button('purchases',purchase.id,'delete','Eliminar compra')}</div><div class="purchase-parts">${chips || '<span>Sin partes vinculadas</span>'}</div></article>`;
+    return `<article class="purchase-card"><div class="purchase-number">${purchase.purchase_number}</div><div><span class="pill blue">${escapeHTML(purchase.status.replace('_', ' ').toUpperCase())}</span><h4>Compra Temu #${purchase.purchase_number}</h4><p>${dateLabel(purchase.purchase_date)} · ${escapeHTML(purchase.account_label)}</p></div><div class="management-actions">${management.button('purchases',purchase.id,'edit','Editar compra')}${management.button('purchases',purchase.id,'delete','Eliminar compra')}</div><div class="purchase-parts">${chips || '<span>Sin partes vinculadas</span>'}</div></article>`;
   }).join('');
 }
 
 function renderDashboard() {
   if (!state.data) return;
   const closure = state.data.closure;
+  if (state.cmdClosureId !== closure.id) closeCmd();
+  state.cmdClosureId = closure.id;
   const finances = state.data.clients.map(clientFinance);
   const products = finances.reduce((sum, item) => sum + item.adjustedProducts, 0);
   const payments = finances.reduce((sum, item) => sum + item.paid, 0);
   const costs = state.data.purchases.reduce((sum, item) => sum + number(item.real_cost), 0);
   const pounds = finances.reduce((sum, item) => sum + item.poundCharge, 0);
   const productProfit = products - costs;
+  const summary = financialSummary(finances,state.data.purchases);
   $('#closureManagement').innerHTML = management.button('order_closures',closure.id,'edit','Editar cierre') + management.button('order_closures',closure.id,'delete','Eliminar cierre');
   $('#topTitle').textContent = closure.title;
   $('#closureTitle').textContent = closure.title;
@@ -184,14 +188,24 @@ function renderDashboard() {
   $('#metricClients').textContent = state.data.clients.length;
   $('#metricProducts').textContent = money(products);
   $('#metricPayments').textContent = money(payments);
-  $('#metricCosts').textContent = money(costs);
+  $('#metricDue').textContent = money(summary.due);
   $('#clientCountBadge').textContent = state.data.clients.length;
   $('#purchaseCountBadge').textContent = state.data.purchases.length;
   $('#profitRevenue').textContent = money(products);
   $('#profitCosts').textContent = money(costs);
   $('#profitProducts').textContent = money(productProfit);
   $('#profitPounds').textContent = money(pounds);
-  $('#profitTotal').textContent = money(productProfit + pounds);
+  $('#profitTotal').textContent = money(summary.profit);
+  const percent = value => value === null ? 'Pendiente de costo' : new Intl.NumberFormat('es-EC',{maximumFractionDigits:1}).format(value)+' % sobre costo';
+  $('#productPercent').textContent = percent(summary.productPercent);
+  $('#poundPercent').textContent = summary.weight.toFixed(2)+' lb · '+percent(summary.poundPercent);
+  $('#totalPercent').textContent = percent(summary.totalPercent);
+  $('#costPercentNote').textContent = summary.costs>0 ? 'Los porcentajes se calculan sobre el costo de las compras registradas, no sobre el precio de venta.' : 'Registra los costos de compra para calcular porcentajes. Los valores en dólares usan el costo registrado actual: $0,00.';
+  for (const [id,value] of [['cmdRevenue',summary.revenue],['cmdPaid',summary.paid],['cmdDue',summary.due],['cmdCredit',summary.credit]]) $('#'+id).textContent=money(value);
+  $('#profitProducts').classList.toggle('negative',summary.productProfit<0);
+  $('#profitTotal').classList.toggle('negative',summary.profit<0);
+  $('#cmdPurchases').innerHTML = state.data.purchases.length ? state.data.purchases.map(p=>'<div class="cmd-purchase"><span>Compra #'+p.purchase_number+' · '+escapeHTML(p.account_label)+'</span><strong>'+money(p.real_cost)+'</strong>'+management.button('purchases',p.id,'edit','Editar compra')+'</div>').join('') : '<p class="cmd-note">Todavía no hay compras registradas.</p>';
+  renderNotices(finances);
   renderClients();
   renderPurchases();
 }
@@ -235,6 +249,7 @@ async function enterApp(session) {
 }
 
 function leaveApp() {
+  closeCmd();
   state.stopRealtime?.();
   state.stopRealtime = null;
   state.session = null;
@@ -293,11 +308,13 @@ $('#refreshBtn').addEventListener('click', () => run(() => refreshClosures(state
 $('#closureList').addEventListener('click', event => {
   const button = event.target.closest('[data-closure]');
   if (!button) return;
+  closeCmd();
   state.selectedClosureId = button.dataset.closure;
   run(refreshSelected, null).catch(() => {});
 });
 
 function openClosureDialog() {
+  closeCmd();
   $('#closureForm').reset();
   $('#newClosureDate').value = today();
   showDialog('#closureDialog');
@@ -627,10 +644,15 @@ $('#whatsappDetailBtn').addEventListener('click', () => {
   openWhatsApp(state.activeClient.phone, message);
 });
 
-$('#clientList').addEventListener('click', async event => {
+$('#closureWorkspace').addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, client, part } = button.dataset;
+  if (action === 'purchase') {
+    openPurchaseDialog();
+    const checkbox = $('#purchaseClients').querySelector('[data-client="'+client+'"] .include-client');
+    if (checkbox) checkbox.checked = true;
+  }
   if (action === 'payment') openPayment(client);
   if (action === 'arrival' || action === 'arrival-part') openArrival(client, part);
   if (action === 'weight') openWeight(client);
@@ -646,6 +668,7 @@ $('#clientList').addEventListener('click', async event => {
 });
 
 function selectTab(name) {
+  closeCmd();
   $$('#tabs button').forEach(button => button.classList.toggle('active', button.dataset.tab === name));
   $$('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `${name}Panel`));
 }
@@ -662,10 +685,28 @@ $('.filters').addEventListener('click', event => {
   renderClients();
 });
 
+function closeCmd() {
+  $('#profitGrid').hidden = true;
+  $('#toggleProfitBtn').textContent = 'Abrir panel';
+  $('#toggleProfitBtn').setAttribute('aria-expanded','false');
+  $('#cmdStatus').textContent = 'Panel cerrado.';
+}
 $('#toggleProfitBtn').addEventListener('click', () => {
-  const hidden = $('#profitGrid').classList.toggle('blurred');
-  $('#toggleProfitBtn').textContent = hidden ? 'Mostrar valores' : 'Ocultar valores';
+  const hidden = !$('#profitGrid').hidden;
+  $('#profitGrid').hidden = hidden;
+  $('#toggleProfitBtn').textContent = hidden ? 'Abrir panel' : 'Cerrar panel';
+  $('#toggleProfitBtn').setAttribute('aria-expanded',String(!hidden));
+  $('#cmdStatus').textContent = hidden ? 'Panel cerrado.' : 'Resumen del cierre seleccionado.';
 });
+document.addEventListener('visibilitychange',()=> { if(document.hidden) closeCmd(); });
+window.addEventListener('blur',closeCmd);
+
+function renderNotices(finances) {
+  const notices=pendingNotices(finances);
+  $('#pendingCount').textContent=notices.length;
+  const row = n => '<article class="pending-row"><div><strong>'+escapeHTML(n.name)+'</strong><span>'+escapeHTML(n.title)+(n.amount!==null?' · '+money(n.amount):'')+'</span></div><button class="secondary" data-action="'+n.action+'" data-client="'+escapeHTML(n.client)+'">'+escapeHTML(n.label)+'</button></article>';
+  $('#pendingList').innerHTML=notices.length ? notices.slice(0,5).map(row).join('')+(notices.length>5?'<details><summary>Ver '+(notices.length-5)+' pendientes más</summary>'+notices.slice(5).map(row).join('')+'</details>':'') : '<p class="pending-empty">Sin acciones pendientes por ahora.</p>';
+}
 
 $('#settingsForm').addEventListener('submit', async event => {
   event.preventDefault();
