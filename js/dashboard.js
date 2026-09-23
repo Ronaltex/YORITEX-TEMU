@@ -28,7 +28,7 @@ export function pendingNotices(finances) {
       add(f,'deposit',f.paid>0?'Anticipo incompleto':'Falta el anticipo','payment','Registrar anticipo',Math.round(deposit*100)/100,0);
     if(f.totalWeight>0&&f.due>.009)
       add(f,'balance','Saldo por cobrar','payment','Registrar pago',f.due,0);
-    if((!f.parts.length&&f.paid>0&&deposit<=.009&&f.adjustedProducts>0)||f.parts.some(p=>p.status==='pending'))
+    if(f.quantity?.known && f.quantity.remaining>0)
       add(f,'purchase','Productos pendientes de compra','purchase','Registrar compra');
     if(f.parts.some(p=>p.status==='in_transit'))
       add(f,'arrival','Partes en tránsito; llegada pendiente','arrival','Registrar llegada',null,3);
@@ -36,7 +36,7 @@ export function pendingNotices(finances) {
     const latestWeight=Math.max(0,...f.weights.map(w=>Date.parse(w.weighed_at)||0));
     if(f.received.length&&(!f.weights.length||latestArrival>latestWeight))
       add(f,'weight',f.weights.length?'Nueva llegada: revisar peso pendiente':'Productos recibidos sin pesar','weight','Registrar libras',null,1);
-    if(f.totalWeight>0&&f.due<=.009&&!f.unresolved.length)
+    if(f.totalWeight>0&&f.due<=.009&&!f.unresolved.length&&!(f.quantity?.known&&f.quantity.remaining>0))
       add(f,'close','Pagado y sin partes pendientes','close-client','Finalizar cliente',null,4);
   }
   return notices.sort((a,b)=>a.priority-b.priority||a.name.localeCompare(b.name,'es'));

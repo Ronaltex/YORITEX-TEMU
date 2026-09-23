@@ -16,7 +16,7 @@ export function db() {
 }
 
 function fail(error) {
-  if (error) throw new Error(error.message || 'Ocurrió un error al guardar la información.');
+  if (error) throw new Error(/product_quantity|pending_products|purchased_quantity|yori_/.test(error.message || '') && /does not exist|schema cache|Could not find/i.test(error.message || '') ? 'Falta instalar la actualización de cantidades en Supabase. Ejecuta actualizacion_cantidades.sql antes de usar esta función.' : error.message || 'Ocurrió un error al guardar la información.');
 }
 
 export async function getSession() {
@@ -138,54 +138,14 @@ export async function addPayment(clientId, amount, paymentType, note = '') {
   return data;
 }
 
-export async function createPurchase(closureId, values, parts) {
-  const { data: previous, error: countError } = await db().from('purchases')
-    .select('purchase_number').eq('closure_id', closureId).order('purchase_number', { ascending: false }).limit(1);
-  fail(countError);
-  const { data: purchase, error } = await db().from('purchases').insert({
-    closure_id: closureId,
-    purchase_number: (previous[0]?.purchase_number || 0) + 1,
-    purchase_date: values.purchase_date,
-    account_label: values.account_label,
-    real_cost: values.real_cost,
-    notes: values.notes || null,
-    status: 'in_transit'
-  }).select().single();
-  fail(error);
-  if (parts.length) {
-    for (const part of parts.filter(item => item.result !== 'not_purchased')) {
-      const { error: previousError } = await db().from('purchase_parts')
-        .update({ status: 'reassigned', missing_note: `Reubicada en Compra #${purchase.purchase_number}` })
-        .eq('client_id', part.client_id).eq('status', 'pending');
-      fail(previousError);
-    }
-    const payload = parts.flatMap(part => {
-      const purchased = {
-        purchase_id: purchase.id,
-        client_id: part.client_id,
-        assigned_value: part.result === 'not_purchased' ? 0 : part.assigned_value,
-        result: part.result,
-        status: part.result === 'not_purchased' ? 'pending' : 'in_transit',
-        missing_note: part.missing_note || null
-      };
-      if (part.result !== 'missing_items') return [purchased];
-      return [
-        purchased,
-        {
-          purchase_id: purchase.id,
-          client_id: part.client_id,
-          assigned_value: 0,
-          result: 'not_purchased',
-          status: 'pending',
-          missing_note: part.missing_note ? `Pendiente: ${part.missing_note}` : 'Artículo pendiente para la próxima compra'
-        }
-      ];
-    });
-    const { error: partsError } = await db().from('purchase_parts').insert(payload);
-    fail(partsError);
-  }
-  await updateClosure(closureId, { status: 'in_transit' });
-  return purchase;
+export async function createPurchase(closureId,values,parts) {
+  const {data,error}=await db().rpc('yori_create_purchase_units',{p_closure:closureId,p_values:values,p_parts:parts});
+  fail(error);return data;
+}
+
+export async function savePartUnits(id,values,pending,revision) {
+  const {data,error}=await db().rpc('yori_save_part_units',{p_id:id,p_values:values,p_pending:pending,p_revision:revision});
+  fail(error);return {data};
 }
 
 export async function registerArrival(partId, clientId, outcome) {
@@ -293,7 +253,7 @@ export function subscribeToChanges(callback) {
 }
 
 const editableFields = {
-  clients: ['name','phone','products_total','estimated_weight','notes','is_closed'],
+  clients: ['product_quantity','pending_products','name','phone','products_total','estimated_weight','notes','is_closed'],
   order_closures: ['title','announced_date','status','notes'],
   purchases: ['purchase_date','account_label','real_cost','notes'],
   payments: ['amount','payment_type','note'],
@@ -319,10 +279,13 @@ async function reconcilePurchases(ids) {
   }
 }
 
-export async function updateRecord(table, id, values) {
+export async function updateRecord(table, id, values, revision) {
   checkTable(table);
   if (Object.keys(values).some(key => !editableFields[table].includes(key))) throw new Error('Campo no permitido.');
-  const { data, error } = await db().from(table).update(values).eq('id',id).select().single();
+  let query = db().from(table).update(values).eq('id',id);
+  if(revision && table==='clients') query=query.eq('updated_at',revision);
+  const { data, error } = await query.select().single();
+  if(error?.code==='PGRST116' && revision) throw new Error('La persona cambió. Actualiza la página y vuelve a editar.');
   fail(error);
   let warning;
   if (table === 'purchase_parts') {

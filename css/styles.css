@@ -373,3 +373,15 @@ button:disabled { opacity:.55; cursor:wait; }
 .pending-row button { flex-shrink:0; }.pending-empty { color:#537966;font-size:.8rem; }.pending-panel summary { cursor:pointer;font-size:.78rem;font-weight:700;padding:12px 0; }
 @media(max-width:1000px){.cmd-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:600px){.cmd-grid{grid-template-columns:1fr 1fr;gap:8px;}.cmd-grid article{padding:13px;}.cmd-grid strong{font-size:1.25rem;}.cmd-total{display:block;}.cmd-total strong,.cmd-total small{text-align:left;margin-top:10px;}.pending-row{align-items:flex-start;flex-direction:column;}.cmd-purchase{flex-wrap:wrap;}.cmd-purchase span{flex-basis:100%;}}
+
+.pending-item {display:grid;grid-template-columns:minmax(0,1fr) 95px auto;gap:8px;align-items:end;margin:8px 0;}
+.quantity-pending {padding:12px;border:1px solid #dbe3ec;border-radius:10px;margin:10px 0;background:#f7f9fc;}
+.quantity-pending small{display:block;color:#64748b;}
+.quantity-details[hidden]{display:none;}
+.quantity-client label {margin-top:10px;}
+@media(max-width:600px){.pending-item{grid-template-columns:minmax(0,1fr) 80px;}.pending-item button{grid-column:1/-1;justify-self:end;}}
+
+.quantity-unconfigured {grid-template-columns:minmax(0,1fr);}
+.quantity-unconfigured button {margin:4px 8px 0 0;}
+.quantity-edit-summary, #editRecordFields > .quantity-pending {grid-column:1/-1;}
+.quantity-pending-list {font-size:.85rem;padding-left:20px;}
