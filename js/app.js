@@ -542,8 +542,7 @@ async function openDetail(clientId) {
   const client = getClient(clientId);
   const finance = clientFinance(client);
   state.activeClient = client;
-  let captureRows = [];
-  try { captureRows = await signedCaptureUrls(finance.captures); } catch (error) { console.error(error); }
+  const captureRows = await signedCaptureUrls(finance.captures);
   const captureUrls = captureRows.map(item => item.signed_url);
   const status = statusFor(finance);
   const incidentText = finance.incidents.map(item => `${item.description}${number(item.deduction) ? ` · descuento ${money(item.deduction)}` : ''}`).join(' · ');
@@ -578,12 +577,28 @@ async function openDetail(clientId) {
   captureContainer.innerHTML = captureUrls.length
     ? captureUrls.map((url, index) => `<figure style="grid-column:span ${6 / rowSizes[index]}"><img src="${escapeHTML(url)}" alt="Captura ${index + 1}"></figure>`).join('')
     : '<p class="no-captures">No se adjuntaron capturas a este pedido.</p>';
+  // Display the actual export so the preview and shared image have identical 4:5 proportions.
+  const previewBlob = await generateInvoiceBlob(state.invoiceDetail);
+  const previewUrl = URL.createObjectURL(previewBlob);
+  if (state.invoicePreviewUrl) URL.revokeObjectURL(state.invoicePreviewUrl);
+  state.invoicePreviewUrl = previewUrl;
+  state.invoiceBlob = previewBlob;
+  let preview = $('#invoiceExportPreview');
+  if (!preview) {
+    preview = document.createElement('img');
+    preview.id = 'invoiceExportPreview';
+    preview.alt = 'Comprobante completo del pedido en formato 4:5';
+    preview.style.cssText = 'display:block;width:100%;height:auto;aspect-ratio:4/5;';
+    $('#invoice').after(preview);
+  }
+  preview.src = previewUrl;
+  $('#invoice').hidden = true;
   showDialog('#detailDialog');
 }
 
 async function invoiceBlob() {
   loading(true, 'Generando imagen…');
-  try { return await generateInvoiceBlob(state.invoiceDetail); }
+  try { return state.invoiceBlob || await generateInvoiceBlob(state.invoiceDetail); }
   catch (error) { toast(error.message || 'No se pudo generar el comprobante.'); throw error; }
   finally { loading(false); }
 }
