@@ -50,9 +50,7 @@ export async function generateInvoiceBlob(detail) {
   fitText(ctx,'DETALLE DE PEDIDO',175,65,850,39,'#fff');
   fitText(ctx,detail.closureTitle,175,105,850,24,'#c6d2df',400);
   ctx.fillStyle='#fff';ctx.fillRect(35,165,1010,1120);
-  if(watermark.status==='fulfilled') {
-    ctx.save();ctx.globalAlpha=.12;ctx.filter="invert(1) grayscale(1) contrast(2)";drawContained(ctx,watermark.value,75,340,930,900);ctx.restore();
-  }
+
   fitText(ctx,'CLIENTE',60,191,460,15,'#708096');
   fitText(ctx,detail.clientName,60,226,460,31);
   fitText(ctx,'ESTADO DEL PEDIDO',570,191,450,15,'#708096');
@@ -97,6 +95,16 @@ export async function generateInvoiceBlob(detail) {
     ctx.fillStyle='#934c12';
     const lineHeight=Math.min(size+3,available/Math.max(1,lines.length));
     lines.forEach((line,i)=>ctx.fillText(line,x,noteTop+size+i*lineHeight));
+  }
+  // Overlay the logo softly. Multiply leaves dark text intact and prevents
+  // the asset's inverted white background from washing out the captures.
+  if(watermark.status==='fulfilled') {
+    ctx.save();
+    ctx.globalAlpha=.12;
+    ctx.globalCompositeOperation='multiply';
+    ctx.filter='invert(1) grayscale(1) contrast(2)';
+    drawContained(ctx,watermark.value,75,340,930,900);
+    ctx.restore();
   }
   ctx.textAlign='center';fitText(ctx,'Gracias por confiar en YORI-TEX',540,1318,960,23);ctx.textAlign='left';
   return new Promise((resolve,reject)=>canvas.toBlob(blob=>{
