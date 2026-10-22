@@ -385,3 +385,10 @@ button:disabled { opacity:.55; cursor:wait; }
 .quantity-unconfigured button {margin:4px 8px 0 0;}
 .quantity-edit-summary, #editRecordFields > .quantity-pending {grid-column:1/-1;}
 .quantity-pending-list {font-size:.85rem;padding-left:20px;}
+
+.pricing-state{display:block;font-size:.65rem;margin-top:6px;color:#64748b;}
+.price-breakdown{display:grid;gap:12px;background:#f1f5f9;border-radius:12px;padding:16px;margin-top:16px;}
+.price-breakdown span{display:flex;justify-content:space-between;gap:15px;}
+.checkbox-label{display:flex;align-items:flex-start;gap:10px;margin-top:18px;}
+.checkbox-label input{width:20px;flex:0 0 20px;}
+.detail-pricing{padding:12px 0;font-size:.85rem;}
