@@ -19,7 +19,8 @@ function pack(images,sizes,area) {
   for(const group of groups){let x=area.x;const height=group.height*scale;for(const ratio of group.row){const width=height*ratio;boxes.push({x,y,width,height});x+=width+gap;}usedWidth=Math.max(usedWidth,x-area.x-gap);y+=height+gap;}
   return {boxes,usedWidth,areaHeight:y-area.y-(groups.length?gap:0)};
 }
-export function captureLayout(images,hasIncident=false) {
+export function captureLayout(images,hasIncident=false,extraRows=0) {
+  const reserve=Math.max(0,Math.min(2,extraRows))*55;
   const ratios=images.map(aspect);
   // Only predominantly narrow phone captures use the side-by-side composition.
   const vertical=images.length>0&&images.length!==3&&ratios.filter(r=>r<=.60).length/images.length>=.75&&ratios.every(r=>r<1);
@@ -33,13 +34,13 @@ export function captureLayout(images,hasIncident=false) {
       if(!best||score>best.score)best={...candidate,score};
     }
     const summaryX=Math.max(480,60+best.usedWidth+28);
-    return {...best,mode:'side',summary:{x:summaryX,y:hasIncident?650:820,width:1020-summaryX}};
+    return {...best,mode:'side',summary:{x:summaryX,y:(hasIncident?650:820)-reserve,width:1020-summaryX}};
   }
-  const packed=pack(images,captureRows(images.length),{x:60,y:300,width:960,height:hasIncident?535:630});
+  const packed=pack(images,captureRows(images.length),{x:60,y:300,width:960,height:(hasIncident?535:630)-reserve});
   // Center compact rows as a group; no empty padding is added to the frames.
   const shift=(960-packed.usedWidth)/2;
   packed.boxes.forEach(box=>box.x+=shift);
-  return {...packed,mode:'bottom',summary:{x:60,y:hasIncident?875:955,width:960}};
+  return {...packed,mode:'bottom',summary:{x:60,y:(hasIncident?875:955)-reserve,width:960}};
 }
 export function invoiceResolution(count) {
   captureRows(count);

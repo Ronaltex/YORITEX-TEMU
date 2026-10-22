@@ -1,3 +1,4 @@
+import { moneyRound, freightPolicy, freightCharge, interestCharge, pricingFor, minimumText } from './pricing.js';
 import { quantityState, validatePending, pendingEditor, readPending, bindPendingEditors } from './quantities.js';
 import { financialSummary, pendingNotices } from './dashboard.js';
 import { captureRows as getCaptureRows } from './invoice-layout.js';
@@ -6,7 +7,7 @@ import {
   isConfigured, getSession, onAuthChange, signIn, signOut, sendPasswordReset, updatePassword,
   ensureSettings, updateSettings, listClosures, createClosure, createClient,
   addPayment, createPurchase, registerArrival, addWeight, setClientClosed,
-  loadClosure, signedCaptureUrls, subscribeToChanges
+  loadClosure, signedCaptureUrls, subscribeToChanges, confirmPrice
 } from './database.js';
 import { generateInvoiceBlob, downloadBlob, copyImage, shareImage } from './comprobante.js';
 
@@ -74,12 +75,6 @@ function closeDialog(selector) {
   if (dialog?.open) dialog.close();
 }
 
-function poundCharge(weight) {
-  if (!weight) return 0;
-  const raw = weight * number(state.settings?.pound_rate);
-  return Math.min(number(state.settings?.maximum_pound_charge), Math.max(number(state.settings?.minimum_pound_charge), raw));
-}
-
 function clientFinance(client) {
   const payments = state.data.payments.filter(item => item.client_id === client.id);
   const paid = payments.reduce((sum, item) => sum + (item.payment_type === 'refund' ? -number(item.amount) : number(item.amount)), 0);
@@ -88,14 +83,15 @@ function clientFinance(client) {
   const adjustedProducts = Math.max(0, number(client.products_total) - deduction);
   const weights = state.data.weights.filter(item => item.client_id === client.id);
   const totalWeight = weights.reduce((sum, item) => sum + number(item.weight_lbs), 0);
-  const charge = poundCharge(totalWeight);
-  const balance = adjustedProducts + charge - paid;
+  const pricing = pricingFor(client,state.settings,adjustedProducts,totalWeight);
+  const charge = pricing.pounds;
+  const balance = moneyRound(pricing.products + charge + pricing.interest - paid);
   const parts = state.data.parts.filter(item => item.client_id === client.id);
   const unresolved = parts.filter(item => ['pending','in_transit'].includes(item.status));
   const received = parts.filter(item => item.status === 'received');
   const captures = state.data.captures.filter(item => item.client_id === client.id);
   return {
-    client, payments, paid, incidents, deduction, adjustedProducts, weights,
+    client, payments, paid, incidents, deduction, adjustedProducts:pricing.products, rawProducts:adjustedProducts, interest:pricing.interest, pricing, weights,
     totalWeight, poundCharge: charge, due: Math.max(0, balance), credit: Math.max(0, -balance),
     parts, unresolved, received, captures, quantity: quantityState(client,state.data.parts)
   };
@@ -103,7 +99,6 @@ function clientFinance(client) {
 
 function statusFor(finance) {
   if (finance.client.is_closed) return { key: 'completed', label: 'Finalizado', cls: 'green' };
-  if (!finance.payments.length) return { key: 'attention', label: 'Esperando anticipo', cls: 'orange' };
   if (finance.parts.length && finance.unresolved.length) {
     const complete = finance.parts.length - finance.unresolved.length;
     return { key: 'attention', label: complete ? `${complete} de ${finance.parts.length} partes resueltas` : 'En tránsito o pendiente', cls: 'violet' };
@@ -111,7 +106,8 @@ function statusFor(finance) {
   if (finance.parts.length && !finance.totalWeight) return { key: 'attention', label: 'Todo recibido · Falta pesar', cls: 'green' };
   if (finance.totalWeight && finance.due > .009) return { key: 'attention', label: 'Detalle listo · Por cobrar', cls: 'blue' };
   if (finance.totalWeight && finance.due <= .009) return { key: 'completed', label: 'Pagado · Listo para cerrar', cls: 'green' };
-  return { key: 'all', label: 'Anticipo registrado · Falta comprar', cls: 'blue' };
+  if (!finance.payments.length && finance.client.payment_mode !== 'on_delivery') return {key:'attention',label:'Anticipo pendiente (no bloquea el pedido)',cls:'orange'};
+  return {key:'all',label:finance.client.payment_mode==='on_delivery'?'Paga al recibir · Pendiente de compra':'Anticipo registrado · Falta comprar',cls:'blue'};
 }
 
 function partLabel(part) {
@@ -123,13 +119,12 @@ function partLabel(part) {
 }
 
 function clientAction(finance) {
-  if (!finance.payments.length) return `<button class="main-action" data-action="payment" data-client="${finance.client.id}">Registrar anticipo</button>`;
-  if (finance.parts.length && finance.unresolved.length) return `<button class="main-action" data-action="arrival" data-client="${finance.client.id}">Registrar llegada</button>`;
-  if (finance.parts.length && !finance.totalWeight) return `<button class="main-action" data-action="weight" data-client="${finance.client.id}">Registrar libras</button>`;
-  if (finance.totalWeight && finance.due > .009) return `<button class="main-action" data-action="payment" data-client="${finance.client.id}">Registrar pago</button>`;
-  if (finance.totalWeight && finance.due <= .009 && !finance.client.is_closed && !(finance.quantity.known && finance.quantity.remaining>0)) return `<button class="main-action" data-action="close-client" data-client="${finance.client.id}">Finalizar cliente</button>`;
-  if (finance.client.is_closed) return `<button data-action="reopen-client" data-client="${finance.client.id}">Reabrir</button>`;
-  return '';
+  const id=finance.client.id;
+  let html='<button data-action="payment" data-client="'+id+'">Registrar pago</button><button data-action="weight" data-client="'+id+'">'+(finance.totalWeight?'Registrar otra entrega':'Registrar libras')+'</button>';
+  if(finance.unresolved.length) html+='<button class="main-action" data-action="arrival" data-client="'+id+'">Registrar llegada</button>';
+  if(finance.client.is_closed)html+='<button data-action="reopen-client" data-client="'+id+'">Reabrir</button>';
+  else if(finance.totalWeight && finance.due<=.009 && !finance.unresolved.length && !(finance.quantity.known&&finance.quantity.remaining>0) && finance.pricing.confirmed && !finance.pricing.review) html+='<button data-action="close-client" data-client="'+id+'">Finalizar cliente</button>';
+  return html;
 }
 
 function renderClosures() {
@@ -154,7 +149,7 @@ function renderClients() {
       ? `<strong class="credit">A favor ${money(finance.credit)}</strong>`
       : `<strong class="${finance.due > 0 ? 'due' : ''}">${money(finance.due)}</strong>`;
     const parts = finance.parts.map((part, index) => `<div class="part-chip"><strong>Parte ${index + 1} · ${part.purchased_quantity == null ? "Cantidad por completar" : part.purchased_quantity + " unidad(es)"}</strong><span>${partLabel(part)}${part.missing_note ? ` · ${escapeHTML(part.missing_note)}` : ''}</span>${['pending','in_transit'].includes(part.status) ? `<button data-action="arrival-part" data-client="${finance.client.id}" data-part="${part.id}">Registrar llegada</button>` : ''}</div>`).join('');
-    return `<article class="client-card ${finance.client.is_closed ? 'completed' : ''}" data-status="${status.key}"><div class="client-person"><span class="client-avatar">${escapeHTML(initials(finance.client.name))}</span><div><strong>${escapeHTML(finance.client.name)}</strong><small>${finance.captures.length} captura(s) · ${escapeHTML(finance.client.phone || 'Sin teléfono')}</small></div></div><div class="client-status"><span class="pill ${status.cls}">${escapeHTML(status.label)}</span></div><div class="money-column"><span>Productos</span><strong>${money(finance.adjustedProducts)}</strong></div><div class="money-column"><span>Abonado</span><strong>${money(finance.paid)}</strong></div><div class="money-column"><span>Saldo</span>${creditOrDue}</div><div class="client-actions">${clientAction(finance)}${management.button('clients',finance.client.id,'edit','Editar')}${management.button('clients',finance.client.id,'history','Historial')}${management.button('clients',finance.client.id,'delete','Eliminar')}<button data-action="detail" data-client="${finance.client.id}">Ver detalle</button>${finance.totalWeight ? `<button data-action="weight" data-client="${finance.client.id}">Registrar otra entrega</button>` : ''}</div>${parts ? `<div class="parts-strip">${parts}</div>` : ''}</article>`;
+    return `<article class="client-card ${finance.client.is_closed ? 'completed' : ''}" data-status="${status.key}"><div class="client-person"><span class="client-avatar">${escapeHTML(initials(finance.client.name))}</span><div><strong>${escapeHTML(finance.client.name)}</strong><small>${finance.captures.length} captura(s) · ${escapeHTML(finance.client.phone || 'Sin teléfono')}</small></div></div><div class="client-status"><span class="pill ${status.cls}">${escapeHTML(status.label)}</span><small class="pricing-state">${finance.pricing.review?"Revisar precio acordado":finance.pricing.confirmed?"Precio confirmado":"Precio sin confirmar"}</small></div><div class="money-column"><span>Productos</span><strong>${money(finance.adjustedProducts)}</strong></div><div class="money-column"><span>Abonado</span><strong>${money(finance.paid)}</strong></div><div class="money-column"><span>Saldo</span>${creditOrDue}</div><div class="client-actions">${clientAction(finance)}${management.button('clients',finance.client.id,'edit','Editar')}${management.button('clients',finance.client.id,'history','Historial')}${management.button('clients',finance.client.id,'delete','Eliminar')}<button data-action="detail" data-client="${finance.client.id}">Ver detalle</button><button data-action="price" data-client="${finance.client.id}">${finance.pricing.confirmed?"Revisar precio confirmado":"Confirmar precio final"}</button></div>${parts ? `<div class="parts-strip">${parts}</div>` : ''}</article>`;
   }).join('');
 }
 
@@ -197,6 +192,7 @@ function renderDashboard() {
   $('#profitCosts').textContent = money(costs);
   $('#profitProducts').textContent = money(productProfit);
   $('#profitPounds').textContent = money(pounds);
+  $('#profitInterest').textContent = money(summary.interest);
   $('#profitTotal').textContent = money(summary.profit);
   const percent = value => value === null ? 'Pendiente de costo' : new Intl.NumberFormat('es-EC',{maximumFractionDigits:1}).format(value)+' % sobre costo';
   $('#productPercent').textContent = percent(summary.productPercent);
@@ -339,6 +335,8 @@ $('#closureForm').addEventListener('submit', async event => {
 
 function openClientDialog() {
   $('#clientForm').reset();
+  $('#clientInterestValue').disabled=true;
+  $('#clientForm .quote-preview').hidden=false;
   $('#depositPreview').textContent = money(0);
   $('#capturePreview').innerHTML = '<p>Puedes seleccionar varias capturas a la vez.</p>';
   showDialog('#clientDialog');
@@ -366,6 +364,9 @@ $('#clientForm').addEventListener('submit', async event => {
       phone: $('#clientPhone').value.trim() || null,
       products_total: number($('#clientProducts').value),
       product_quantity: Number($('#clientQuantity').value),
+      payment_mode: $('#clientPaymentMode').value,
+      interest_mode: $('#clientInterestMode').value,
+      interest_value: $('#clientInterestMode').value==='none'?0:number($('#clientInterestValue').value),
       estimated_weight: $('#clientEstimatedWeight').value ? number($('#clientEstimatedWeight').value) : null,
       notes: $('#clientNotes').value.trim() || null
     }, [...$('#clientCaptures').files]), 'Persona y capturas guardadas.');
@@ -384,7 +385,7 @@ function openPayment(clientId) {
   const client = getClient(clientId);
   const finance = clientFinance(client);
   state.activeClient = client;
-  const firstPayment = !finance.payments.length;
+  const firstPayment = !finance.payments.length && client.payment_mode!=='on_delivery' && !finance.totalWeight && !finance.pricing.confirmed;
   const suggested = firstPayment ? Math.max(0, finance.adjustedProducts / 2) : finance.due;
   $('#paymentTitle').textContent = `Pago de ${client.name}`;
   $('#paymentCurrentDue').textContent = money(finance.due);
@@ -419,7 +420,7 @@ $('#paymentForm').addEventListener('submit', async event => {
   const client = state.activeClient;
   const before = clientFinance(client);
   const amount = number($('#paymentAmount').value);
-  const type = before.payments.length ? 'payment' : 'deposit';
+  const type = !before.payments.length && client.payment_mode!=='on_delivery' && !before.totalWeight && !before.pricing.confirmed ? 'deposit' : 'payment';
   try {
     await run(() => addPayment(client.id, amount, type, $('#paymentNote').value.trim()), 'Pago registrado.');
     closeDialog('#paymentDialog');
@@ -523,20 +524,13 @@ $('#arrivalForm').addEventListener('submit', async event => {
 
 function updateWeightPreview() {
   if (!state.activeClient) return;
-  const finance = clientFinance(state.activeClient);
-  const newWeight = number($('#weightAmount').value);
-  const cumulative = finance.totalWeight + newWeight;
-  const charge = poundCharge(cumulative);
-  const due = Math.max(0, finance.adjustedProducts + charge - finance.paid);
-  $('#weightCumulative').textContent = `${cumulative.toFixed(2)} lb`;
-  $('#weightChargePreview').textContent = money(charge);
-  $('#weightDuePreview').textContent = money(due);
-  const raw = cumulative * number(state.settings.pound_rate);
-  $('#weightRuleNote').textContent = raw < number(state.settings.minimum_pound_charge)
-    ? `Se aplicará el cobro mínimo de ${money(state.settings.minimum_pound_charge)}.`
-    : raw > number(state.settings.maximum_pound_charge)
-      ? `Se aplicará el cobro máximo de ${money(state.settings.maximum_pound_charge)}.`
-      : `${cumulative.toFixed(2)} lb × ${money(state.settings.pound_rate)} por libra.`;
+  const finance=clientFinance(state.activeClient), cumulative=finance.totalWeight+number($('#weightAmount').value);
+  const policy=freightPolicy(state.activeClient,state.settings), charge=freightCharge(cumulative,policy);
+  const due=Math.max(0,moneyRound(finance.rawProducts+charge+interestCharge(finance.rawProducts,state.activeClient.interest_mode,state.activeClient.interest_value)-finance.paid));
+  $('#weightCumulative').textContent=cumulative.toFixed(2)+' lb';
+  $('#weightChargePreview').textContent=money(charge);
+  $('#weightDuePreview').textContent=money(due);
+  $('#weightRuleNote').textContent='Tarifa de esta persona: '+money(policy.rate)+'/lb · mínimo '+money(policy.minimum)+' · máximo '+money(policy.maximum)+'. Después de guardar podrás ajustar el cobro y confirmar el precio.'+(finance.pricing.confirmed?' El precio confirmado actual se conserva hasta que lo confirmes de nuevo.':'');
 }
 
 function openWeight(clientId) {
@@ -566,9 +560,57 @@ $('#weightForm').addEventListener('submit', async event => {
     }), 'Peso guardado y total actualizado.');
     closeDialog('#weightDialog');
     await refreshSelected();
-    await openDetail(state.activeClient.id);
+    openPricing(state.activeClient.id);
   } catch {}
 });
+
+
+let pricingClientId, pricingRevision, pricingBusy=false;
+function updatePricingPreview() {
+  const client=getClient(pricingClientId);if(!client)return;
+  const finance=clientFinance(client), freight=number($('#pricePounds').value), mode=$('#priceInterestMode').value;
+  $('#priceInterestValue').disabled=mode==='none';
+  const interest=interestCharge(finance.rawProducts,mode,$('#priceInterestValue').value);
+  $('#priceProducts').textContent=money(finance.rawProducts);
+  $('#priceInterestPreview').textContent=money(interest);
+  const total=moneyRound(finance.rawProducts+freight+interest),balance=moneyRound(total-finance.paid);
+  $('#priceTotal').textContent=money(total);
+  $('#priceBalance').textContent=(balance<0?'A favor: ':'Por pagar: ')+money(Math.abs(balance));
+  $('#pricePaid').textContent=money(finance.paid);
+  const policy=finance.pricing.policy, minimum=Math.min(policy.minimum,freight);
+  const text=minimumText({show_minimum:true,minimum_charge:minimum,minimum_weight:minimum===policy.minimum&&policy.rate>0?moneyRound(minimum/policy.rate):null});
+  $('#priceMinimumPreview').textContent=$('#priceShowMinimum').checked?text||'Sin cobro mínimo que mostrar.':'Esta aclaración no aparecerá en el comprobante.';
+}
+function openPricing(id) {
+  const client=getClient(id),finance=clientFinance(client);
+  pricingClientId=id;pricingRevision=client.updated_at;
+  $('#priceTitle').textContent='Precio de '+client.name;
+  $('#priceForm').reset();$('#priceError').textContent='';
+  $('#pricePounds').value=finance.pricing.pounds.toFixed(2);
+  $('#priceInterestMode').value=client.interest_mode||'none';
+  $('#priceInterestValue').value=number(client.interest_value).toFixed(2);
+  $('#priceShowMinimum').checked=Boolean(client.price_snapshot?.show_minimum);
+  $('#priceSuggested').textContent='Peso actual: '+finance.totalWeight.toFixed(2)+' lb. Según la tarifa guardada: '+money(finance.pricing.draftPounds)+'. Puedes escribir el importe acordado para esta persona.';
+  $('#priceReviewNote').textContent=finance.pricing.review?'Revisa el cobro acordado. Los registros anteriores no guardaban descuentos especiales; si ya cobraste otro importe, escríbelo en «Cobro total por libras».':finance.pricing.confirmed?'Este precio está confirmado. Solo cambiará si guardas una nueva confirmación. Los pagos se siguen descontando normalmente.':'Confirma los importes que vas a cobrar. No tendrás que cambiar la configuración general para hacer una excepción.';
+  $('#priceUseSuggested').onclick=()=>{$('#pricePounds').value=finance.pricing.draftPounds.toFixed(2);updatePricingPreview();};
+  updatePricingPreview();showDialog('#priceDialog');
+}
+$('#priceForm').addEventListener('input',updatePricingPreview);
+$('#priceForm').addEventListener('change',updatePricingPreview);
+$('#detailPriceBtn').addEventListener('click',()=>openPricing(state.activeClient.id));
+$('#priceForm').addEventListener('submit',async event=>{
+  event.preventDefault();if(pricingBusy)return;
+  const pounds=Number($('#pricePounds').value),value=Number($('#priceInterestValue').value),mode=$('#priceInterestMode').value;
+  if(!Number.isFinite(pounds)||pounds<0||!Number.isFinite(value)||value<0){$('#priceError').textContent='Usa valores válidos mayores o iguales a cero.';return;}
+  pricingBusy=true;$('#priceSaveBtn').disabled=true;
+  try {
+    await run(()=>confirmPrice(pricingClientId,{pounds,mode,interest:mode==='none'?0:value,showMinimum:$('#priceShowMinimum').checked,revision:pricingRevision}),'Precio final confirmado.');
+    closeDialog('#priceDialog');await refreshSelected();await openDetail(pricingClientId);
+  } catch(error){$('#priceError').textContent=error.message;if(!$('#priceDialog').open)toast(error.message);}
+  finally{pricingBusy=false;$('#priceSaveBtn').disabled=false;}
+});
+$('#clientPaymentMode').addEventListener('change',()=>{$('#clientForm .quote-preview').hidden=$('#clientPaymentMode').value==='on_delivery';});
+$('#clientInterestMode').addEventListener('change',()=>{$('#clientInterestValue').disabled=$('#clientInterestMode').value==='none';});
 
 async function openDetail(clientId) {
   const client = getClient(clientId);
@@ -583,6 +625,8 @@ async function openDetail(clientId) {
     clientName: client.name,
     statusText: status.label,
     adjustedProducts: finance.adjustedProducts,
+    interest: finance.interest,
+    minimumNote: minimumText(finance.pricing.snapshot),
     paid: finance.paid,
     totalWeight: finance.totalWeight,
     poundCharge: finance.poundCharge,
@@ -595,6 +639,9 @@ async function openDetail(clientId) {
   $('#invoiceName').textContent = client.name;
   $('#invoiceStatus').textContent = status.label;
   $('#invoiceProducts').textContent = money(finance.adjustedProducts);
+  $('#invoiceInterestRow').hidden=finance.interest<=0;
+  $('#invoiceInterest').textContent='+ '+money(finance.interest);
+  $('#detailPricingNote').textContent=finance.pricing.review?'Hay cambios o un cobro antiguo por revisar. Revisa el precio acordado antes de compartir.':finance.pricing.confirmed?'Precio confirmado. Cambiar la configuración general no lo modifica.':'Precio todavía sin confirmar.';
   $('#invoicePaid').textContent = `− ${money(finance.paid)}`;
   $('#invoiceWeightLabel').textContent = `${finance.totalWeight.toFixed(2)} lb acumuladas`;
   $('#invoicePoundCharge').textContent = money(finance.poundCharge);
@@ -668,6 +715,7 @@ $('#closureWorkspace').addEventListener('click', async event => {
     const checkbox = $('#purchaseClients').querySelector('[data-client="'+client+'"] .include-client');
     if (checkbox) { checkbox.checked = true; updatePurchaseQuantityCard(checkbox.closest('.quantity-client')); }
   }
+  if (action === 'price') openPricing(client);
   if (action === 'payment') openPayment(client);
   if (action === 'arrival' || action === 'arrival-part') openArrival(client, part);
   if (action === 'weight') openWeight(client);

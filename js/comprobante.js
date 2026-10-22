@@ -35,7 +35,8 @@ export async function generateInvoiceBlob(detail) {
   ]);
   if(results.some(result=>result.status!=='fulfilled')) throw new Error('No se cargaron todas las capturas. Actualiza el detalle antes de exportar.');
   const images=results.map(result=>result.value);
-  const layout=captureLayout(images,Boolean(detail.incidentText));
+  const extraText=[detail.minimumNote,detail.incidentText].filter(Boolean).join('\n');
+  const layout=captureLayout(images,Boolean(extraText),Number(detail.interest)>0?1:0);
   const resolution=invoiceResolution(images.length);
   const canvas=document.createElement('canvas');
   canvas.width=resolution.width;canvas.height=resolution.height;
@@ -71,6 +72,7 @@ export async function generateInvoiceBlob(detail) {
   const x=summary.x, right=x+summary.width, top=summary.y;
   fitText(ctx,'DETALLE DE VALORES',x,top,summary.width,22);
   const entries=[['Valor de productos',money(detail.adjustedProducts)]];
+  if(Number(detail.interest)>0)entries.push(['Interés acordado','+ '+money(detail.interest)]);
   const paid=Number(detail.paid)||0;
   if(paid!==0) entries.push([paid>0?'Abono recibido':'Devolución neta',(paid>0?'− ':'+ ')+money(Math.abs(paid))]);
   entries.push(['Libras · '+Number(detail.totalWeight||0).toFixed(2)+' lb',(Number(detail.poundCharge)>0?'+ ':'')+money(detail.poundCharge)]);
@@ -87,11 +89,11 @@ export async function generateInvoiceBlob(detail) {
   ctx.fillStyle='#06182d';ctx.fillRect(x,balanceTop,summary.width,100);
   fitText(ctx,credit?'SALDO A FAVOR':'TOTAL PENDIENTE',x+18,balanceTop+30,summary.width-36,narrow?20:23,'#ff9a31');
   ctx.textAlign='right';fitText(ctx,money(credit?detail.credit:detail.due),right-18,balanceTop+79,summary.width-36,narrow?42:48,'#fff');ctx.textAlign='left';
-  if(detail.incidentText) {
+  if(extraText) {
     const noteTop=balanceTop+119, noteWidth=summary.width;
-    let size=17,lines=noteLines(ctx,detail.incidentText,noteWidth,size);
+    let size=17,lines=noteLines(ctx,extraText,noteWidth,size);
     const available=1280-noteTop;
-    while(lines.length*(size+3)>available && size>7) lines=noteLines(ctx,detail.incidentText,noteWidth,--size);
+    while(lines.length*(size+3)>available && size>7) lines=noteLines(ctx,extraText,noteWidth,--size);
     ctx.fillStyle='#934c12';
     const lineHeight=Math.min(size+3,available/Math.max(1,lines.length));
     lines.forEach((line,i)=>ctx.fillText(line,x,noteTop+size+i*lineHeight));

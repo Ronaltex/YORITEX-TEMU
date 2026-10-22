@@ -3,6 +3,8 @@ import { updateRecord, deleteRecord, addCaptures, signedCaptureUrls, savePartUni
 
 // Only business fields are editable; ownership and relationships stay protected.
 const choices = {
+  payment_mode:{deposit:'Con anticipo',on_delivery:'Paga al recibir / confianza'},
+  interest_mode:{none:'Sin interés',percent:'Porcentaje sobre productos (una sola vez)',fixed:'Interés fijo en dólares (una sola vez)'},
   status: { open:'Abierto', ordered:'Comprado', in_transit:'En tránsito', receiving:'Recibiendo', completed:'Completado', archived:'Archivado', pending:'Pendiente de compra', received:'Recibida', lost:'Perdida', cancelled:'Cancelada', reassigned:'Reubicada' },
   result: { complete:'Completa', missing_items:'Faltaron artículos', not_purchased:'No se compró' },
   payment_type: { deposit:'Anticipo', payment:'Pago', refund:'Devolución', correction:'Corrección a favor del cliente' },
@@ -11,7 +13,7 @@ const choices = {
 };
 const field = (key, label, type = 'text', required = false, options) => ({ key, label, type, required, options });
 const schemas = {
-  clients: ['persona', [field('name','Nombre completo','text',true),field('phone','WhatsApp','tel'),field('products_total','Valor de productos ($)','number',true),field('product_quantity','Total de unidades pedidas','integer',true),field('estimated_weight','Peso estimado (lb)','number'),field('notes','Nota interna','textarea'),field('is_closed','Finalizado','checkbox')]],
+  clients: ['persona', [field('name','Nombre completo','text',true),field('phone','WhatsApp','tel'),field('products_total','Valor de productos ($)','number',true),field('product_quantity','Total de unidades pedidas','integer',true),field('payment_mode','Forma de pago','select',true,['deposit','on_delivery']),field('interest_mode','Interés','select',true,['none','percent','fixed']),field('interest_value','Porcentaje o valor del interés','number',true),field('estimated_weight','Peso estimado (lb)','number'),field('notes','Nota interna','textarea'),field('is_closed','Finalizado','checkbox')]],
   order_closures: ['cierre', [field('title','Nombre del cierre','text',true),field('announced_date','Fecha anunciada','date',true),field('status','Estado','select',true,['open','ordered','in_transit','receiving','completed','archived']),field('notes','Nota interna','textarea')]],
   purchases: ['compra', [field('purchase_date','Fecha de compra','date',true),field('account_label','Cuenta utilizada','text',true),field('real_cost','Costo real ($)','number',true),field('notes','Nota interna','textarea')]],
   payments: ['pago', [field('amount','Valor ($)','number',true),field('payment_type','Tipo de movimiento','select',true,Object.keys(choices.payment_type)),field('note','Nota','textarea')]],
@@ -63,7 +65,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
       };
       $('#editRecordFields input[name="'+(table==='clients'?'product_quantity':'purchased_quantity')+'"]').addEventListener('input',updateSummary);
       updateSummary();
-      $('#editRecordNote').textContent='Las cantidades y el detalle pendiente son internos; no se añaden al comprobante. Los precios y descuentos se editan por separado.';
+      $('#editRecordNote').textContent='Las cantidades y el detalle pendiente son internos; no se añaden al comprobante. Si el precio ya estaba confirmado, los cambios de precio o interés quedan pendientes hasta volver a confirmar el precio final.';
     }
     $('#editRecordError').textContent = '';
     $('#editRecordDialog').showModal();
@@ -149,6 +151,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
         if (values.result === 'not_purchased' && values.assigned_value !== 0) throw new Error('Una parte no comprada debe tener valor 0.');
         values.arrived_at = ['received','lost','cancelled'].includes(values.status) ? row.arrived_at || new Date().toISOString() : null;
       }
+      if(table==='clients' && values.interest_mode==='none')values.interest_value=0;
       let result;
       if(table==='clients'||table==='purchase_parts') {
         const key=table==='clients'?'product_quantity':'purchased_quantity';

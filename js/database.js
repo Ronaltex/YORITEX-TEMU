@@ -16,6 +16,7 @@ export function db() {
 }
 
 function fail(error) {
+  if(error && /freight_policy|price_snapshot|pricing_needs_review|payment_mode|interest_mode|interest_value|yori_confirm_price/.test(error.message||'') && /does not exist|schema cache|Could not find/i.test(error.message||'')) throw new Error('Falta instalar actualizacion_precios_confirmados.sql en Supabase.');
   if (error) throw new Error(/product_quantity|pending_products|purchased_quantity|yori_/.test(error.message || '') && /does not exist|schema cache|Could not find/i.test(error.message || '') ? 'Falta instalar la actualización de cantidades en Supabase. Ejecuta actualizacion_cantidades.sql antes de usar esta función.' : error.message || 'Ocurrió un error al guardar la información.');
 }
 
@@ -253,7 +254,7 @@ export function subscribeToChanges(callback) {
 }
 
 const editableFields = {
-  clients: ['product_quantity','pending_products','name','phone','products_total','estimated_weight','notes','is_closed'],
+  clients: ['payment_mode','interest_mode','interest_value','product_quantity','pending_products','name','phone','products_total','estimated_weight','notes','is_closed'],
   order_closures: ['title','announced_date','status','notes'],
   purchases: ['purchase_date','account_label','real_cost','notes'],
   payments: ['amount','payment_type','note'],
@@ -332,4 +333,9 @@ export async function deleteRecord(table, id) {
   try { await reconcilePurchases(purchaseIds); }
   catch { warnings.push('El registro se eliminó, pero no se pudo actualizar el estado de una compra.'); }
   return { warning: warnings.join(' ') };
+}
+
+export async function confirmPrice(id,values) {
+  const {data,error}=await db().rpc('yori_confirm_price',{p_client:id,p_pounds:values.pounds,p_mode:values.mode,p_interest:values.interest,p_show_minimum:values.showMinimum,p_revision:values.revision});
+  fail(error);return data;
 }
