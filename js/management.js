@@ -104,7 +104,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
     if (!row) return;
     const effects = {
       clients:'También se eliminarán sus pagos, capturas, partes, incidencias y libras. Las compras compartidas y su costo se conservarán.',
-      order_closures:'También se eliminarán TODAS las personas, pagos, capturas, compras, partes, incidencias y libras de este cierre.',
+      order_closures:'Se eliminarán TODAS las personas, pagos, capturas, compras, partes, incidencias y libras de este cierre terminado. Se liberará un lugar para otro cierre. Los demás cierres se conservan.',
       purchases:'También se eliminarán sus partes y las incidencias vinculadas. Los clientes, pagos y libras se conservarán.',
       purchase_parts:'También se eliminarán las incidencias y descuentos vinculados a esta parte.'
     };

@@ -2,7 +2,7 @@ import { moneyRound, freightPolicy, freightCharge, interestCharge, pricingFor, m
 import { quantityState, validatePending, pendingEditor, readPending, bindPendingEditors } from './quantities.js';
 import { financialSummary, pendingNotices } from './dashboard.js';
 import { captureRows as getCaptureRows } from './invoice-layout.js';
-import { setupManagement } from './management.js';
+import { setupManagement } from './management.js?v=20261028-cierres';
 import {
   isConfigured, getSession, onAuthChange, signIn, signOut, sendPasswordReset, updatePassword,
   ensureSettings, updateSettings, listClosures, createClosure, createClient,
@@ -128,9 +128,15 @@ function clientAction(finance) {
 }
 
 function renderClosures() {
+  const count=state.closures.length, full=count>=4;
+  $('#closureSelect').innerHTML=count?state.closures.map(c=>'<option value="'+c.id+'" '+(c.id===state.selectedClosureId?'selected':'')+'>'+escapeHTML(c.title)+'</option>').join(''):'<option value="">Sin cierres todavía</option>';
+  $('#closureSelect').disabled=!count;
+  $('#closureCapacity').textContent=count+' de 4 cierres guardados. '+(full?'Elimina uno terminado para liberar espacio.':'Puedes crear otro aunque los anteriores tengan saldos pendientes.');
+  for(const id of ['newClosureBtn','newClosureTopBtn','firstClosureBtn']) {$('#'+id).disabled=full;$('#'+id).title=full?'Límite de cuatro cierres. Elimina uno terminado.':'Crear otro cierre independiente';}
+
   $('#closureList').innerHTML = state.closures.map(closure => {
-    const date = shortDate(closure.announced_date).toUpperCase().replace('.', '');
-    const [day, month] = date.split(' ');
+    const dateParts=new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short'}).formatToParts(new Date(closure.announced_date+'T12:00:00'));
+    const day=dateParts.find(p=>p.type==='day')?.value||'', month=(dateParts.find(p=>p.type==='month')?.value||'').toUpperCase().replace('.','');
     return `<button class="closure-button ${closure.id === state.selectedClosureId ? 'active' : ''}" data-closure="${closure.id}"><span class="date">${day}<small>${month}</small></span><span><strong>${escapeHTML(closure.title)}</strong><small>${escapeHTML(closure.status.replace('_', ' '))}</small></span></button>`;
   }).join('');
 }
@@ -177,7 +183,7 @@ function renderDashboard() {
   const pounds = finances.reduce((sum, item) => sum + item.poundCharge, 0);
   const productProfit = products - costs;
   const summary = financialSummary(finances,state.data.purchases);
-  $('#closureManagement').innerHTML = management.button('order_closures',closure.id,'edit','Editar cierre') + management.button('order_closures',closure.id,'delete','Eliminar cierre');
+  $('#closureManagement').innerHTML = management.button('order_closures',closure.id,'edit','Editar cierre') + management.button('order_closures',closure.id,'delete','Eliminar terminado y liberar espacio');
   $('#topTitle').textContent = closure.title;
   $('#closureTitle').textContent = closure.title;
   $('#closureDate').textContent = `Fecha anunciada: ${dateLabel(closure.announced_date)}`;
@@ -312,25 +318,31 @@ $('#closureList').addEventListener('click', event => {
 });
 
 function openClosureDialog() {
+  if(state.closures.length>=4)return toast('Ya tienes cuatro cierres. Elimina uno terminado para liberar espacio.');
   closeCmd();
+  $('#closureCreateError').textContent='';
+  $('#closureDialogHint').textContent='Tienes '+state.closures.length+' de 4 cierres. Este nuevo pedido tendrá sus propias personas, compras y pagos; los anteriores se conservan.';
   $('#closureForm').reset();
   $('#newClosureDate').value = today();
   showDialog('#closureDialog');
 }
 $('#newClosureBtn').addEventListener('click', openClosureDialog);
+$('#newClosureTopBtn').addEventListener('click',openClosureDialog);
+$('#closureSelect').addEventListener('change',event=>{if(!event.target.value)return;closeCmd();state.selectedClosureId=event.target.value;run(refreshSelected,null).catch(()=>{});});
 $('#firstClosureBtn').addEventListener('click', openClosureDialog);
 
-$('#closureForm').addEventListener('submit', async event => {
-  event.preventDefault();
+$('#closureForm').addEventListener('submit',async event=>{
+  event.preventDefault();if(event.target.dataset.saving)return;
+  const submit=event.target.querySelector('button[type="submit"]');
+  $('#closureCreateError').textContent='';
+  if(state.closures.length>=4){$('#closureCreateError').textContent='Elimina un cierre terminado antes de crear otro.';return;}
+  const title=$('#newClosureTitle').value.trim();if(!title){$('#closureCreateError').textContent='Escribe un nombre para este cierre.';return;}
+  event.target.dataset.saving='true';submit.disabled=true;
   try {
-    const row = await run(() => createClosure({
-      title: $('#newClosureTitle').value.trim(),
-      announced_date: $('#newClosureDate').value,
-      notes: $('#newClosureNotes').value.trim() || null
-    }), 'Cierre creado correctamente.');
-    closeDialog('#closureDialog');
-    await refreshClosures(row.id);
-  } catch {}
+    const row=await run(()=>createClosure({title,announced_date:$('#newClosureDate').value,notes:$('#newClosureNotes').value.trim()||null}),'Cierre creado correctamente.');
+    closeDialog('#closureDialog');await refreshClosures(row.id);selectTab('people');
+  } catch(error){$('#closureCreateError').textContent=error.message;}
+  finally{delete event.target.dataset.saving;submit.disabled=false;}
 });
 
 function openClientDialog() {
