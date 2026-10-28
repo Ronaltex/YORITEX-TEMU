@@ -8,7 +8,7 @@
   <title>YORI-TEX · Pedidos</title>
   <link rel="icon" type="image/png" href="assets/yori-tex-badge.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=20261028-cierres">
 </head>
 <body>
   <section class="setup-screen" id="setupScreen" hidden>
@@ -53,6 +53,7 @@
         <div class="top-actions"><button class="icon-button" id="refreshBtn" title="Actualizar">↻</button><button class="secondary" id="signOutBtn">Cerrar sesión</button></div>
       </header>
 
+      <section class="closure-switcher" aria-label="Administrar cierres"><label>Cierre de pedido<select id="closureSelect" aria-label="Seleccionar cierre"></select></label><button type="button" class="primary" id="newClosureTopBtn">＋ Nuevo cierre</button><p id="closureCapacity" role="status"></p></section>
       <section class="empty-closure" id="noClosure" hidden>
         <img src="assets/yori-tex-badge.png" alt="">
         <h2>Crea tu primer cierre</h2>
@@ -126,7 +127,7 @@
     </main>
   </div>
 
-  <dialog id="closureDialog"><form method="dialog" class="dialog-card" id="closureForm"><header><div><span>NUEVO CIERRE</span><h2>Crear cierre de pedido</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><label>Nombre del cierre<input id="newClosureTitle" placeholder="Pedido del domingo 27 de septiembre" required></label><label>Fecha anunciada<input id="newClosureDate" type="date" required></label><label>Nota <span class="optional">Opcional</span><textarea id="newClosureNotes" placeholder="Información interna de este cierre"></textarea></label></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Crear cierre</button></footer></form></dialog>
+  <dialog id="closureDialog"><form method="dialog" class="dialog-card" id="closureForm"><header><div><span>NUEVO CIERRE</span><h2>Crear cierre de pedido</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><p id="closureDialogHint" class="rule-note"></p><label>Nombre del cierre<input id="newClosureTitle" placeholder="Pedido del domingo 27 de septiembre" required></label><label>Fecha anunciada<input id="newClosureDate" type="date" required></label><label>Nota <span class="optional">Opcional</span><textarea id="newClosureNotes" placeholder="Información interna de este cierre"></textarea></label><p id="closureCreateError" class="form-error" role="alert"></p></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Crear cierre</button></footer></form></dialog>
 
   <dialog id="clientDialog"><form method="dialog" class="dialog-card large" id="clientForm"><header><div><span>NUEVA PERSONA</span><h2>Registrar cotización</h2></div><button class="dialog-x" value="cancel">×</button></header><div class="dialog-body"><div class="form-grid"><label>Nombre completo<input id="clientName" required></label><label>WhatsApp<input id="clientPhone" type="tel" placeholder="0991234567"></label><label>Valor total de productos<div class="money-input"><span>$</span><input id="clientProducts" type="number" min="0" step="0.01" required></div></label><label>Cantidad total de productos<input id="clientQuantity" type="number" min="1" step="1" required><small>Unidades del pedido. Solo para tu control interno.</small></label><label>Forma de pago<select id="clientPaymentMode"><option value="deposit">Con anticipo</option><option value="on_delivery">Paga al recibir / confianza</option></select></label><label>Interés<select id="clientInterestMode"><option value="none">Sin interés</option><option value="percent">Porcentaje sobre productos · una sola vez</option><option value="fixed">Interés fijo en dólares · una sola vez</option></select></label><label>Porcentaje o valor del interés<input id="clientInterestValue" type="number" min="0" step="0.01" value="0" disabled><small>El porcentaje se aplica al valor de productos después de descuentos. No es mensual ni acumulativo.</small></label><label>Estimación de peso <span class="optional">No suma al total</span><div class="suffix-input"><input id="clientEstimatedWeight" type="number" min="0" step="0.01"><span>lb</span></div></label></div><label>Capturas de los productos<input id="clientCaptures" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></label><div class="file-preview" id="capturePreview"><p>Puedes seleccionar varias capturas a la vez.</p></div><label>Nota interna <span class="optional">Opcional</span><textarea id="clientNotes"></textarea></label><div class="quote-preview"><span>Anticipo mínimo sugerido<strong id="depositPreview">$0,00</strong></span><small>50 % del valor de los productos</small></div></div><footer><button class="secondary" value="cancel">Cancelar</button><button class="primary" type="submit" value="default">Guardar persona</button></footer></form></dialog>
 
@@ -150,6 +151,6 @@
   <dialog id="captureViewDialog"><section class="dialog-card large"><header><h2>Captura</h2><button type="button" class="dialog-x" data-close-dialog aria-label="Cerrar">×</button></header><div class="dialog-body"><img id="captureImage" alt="Captura del pedido" style="max-width:100%;height:auto"></div></section></dialog>
   <div class="loading" id="loading" hidden><span></span><p>Guardando información…</p></div>
   <div class="toast" id="toast" role="status"></div>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=20261028-cierres"></script>
 </body>
 </html>
