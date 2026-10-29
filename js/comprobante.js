@@ -1,4 +1,5 @@
 import { captureLayout, invoiceResolution } from './invoice-layout.js';
+import { drawProductMarks } from './product-marks.js?v=20261028-productos';
 const money = value => new Intl.NumberFormat('es-EC', { style:'currency', currency:'USD' }).format(Number(value) || 0);
 function loadImage(src) {
   return new Promise((resolve,reject)=> {
@@ -36,7 +37,7 @@ export async function generateInvoiceBlob(detail) {
   if(results.some(result=>result.status!=='fulfilled')) throw new Error('No se cargaron todas las capturas. Actualiza el detalle antes de exportar.');
   const images=results.map(result=>result.value);
   const extraText=[detail.minimumNote,detail.incidentText].filter(Boolean).join('\n');
-  const layout=captureLayout(images,Boolean(extraText),Number(detail.interest)>0?1:0);
+  const layout=captureLayout(images,Boolean(extraText),(Number(detail.interest)>0?1:0)+(Number(detail.visualDiscount)>0?1:0));
   const resolution=invoiceResolution(images.length);
   const canvas=document.createElement('canvas');
   canvas.width=resolution.width;canvas.height=resolution.height;
@@ -66,12 +67,15 @@ export async function generateInvoiceBlob(detail) {
     const box=layout.boxes[index];
     // Frames follow each image's actual aspect ratio: no square placeholders.
     ctx.drawImage(image,box.x,box.y,box.width,box.height);
+    drawProductMarks(ctx,box,detail.captureMarks?.[index]||[]);
     ctx.strokeStyle='#d5dee8';ctx.lineWidth=1;ctx.strokeRect(box.x,box.y,box.width,box.height);
   });
   const summary=layout.summary;
   const x=summary.x, right=x+summary.width, top=summary.y;
   fitText(ctx,'DETALLE DE VALORES',x,top,summary.width,22);
-  const entries=[['Valor de productos',money(detail.adjustedProducts)]];
+  const discount=Number(detail.visualDiscount)||0;
+  const entries=[['Valor de productos',money(Number(detail.adjustedProducts)+discount)]];
+  if(discount>0)entries.push(['Productos no entregados','− '+money(discount)]);
   if(Number(detail.interest)>0)entries.push(['Interés acordado','+ '+money(detail.interest)]);
   const paid=Number(detail.paid)||0;
   if(paid!==0) entries.push([paid>0?'Abono recibido':'Devolución neta',(paid>0?'− ':'+ ')+money(Math.abs(paid))]);

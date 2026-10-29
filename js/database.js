@@ -16,6 +16,7 @@ export function db() {
 }
 
 function fail(error) {
+  if(error && /visual_products|visual_adjustment|yori_.*visual/.test(error.message||'') && /does not exist|schema cache|Could not find/i.test(error.message||'')) throw new Error('Falta instalar actualizacion_productos_visuales.sql en Supabase.');
   if(error && /freight_policy|price_snapshot|pricing_needs_review|payment_mode|interest_mode|interest_value|yori_confirm_price/.test(error.message||'') && /does not exist|schema cache|Could not find/i.test(error.message||'')) throw new Error('Falta instalar actualizacion_precios_confirmados.sql en Supabase.');
   if (error) throw new Error(/product_quantity|pending_products|purchased_quantity|yori_/.test(error.message || '') && /does not exist|schema cache|Could not find/i.test(error.message || '') ? 'Falta instalar la actualización de cantidades en Supabase. Ejecuta actualizacion_cantidades.sql antes de usar esta función.' : error.message || 'Ocurrió un error al guardar la información.');
 }
@@ -141,6 +142,15 @@ export async function addPayment(clientId, amount, paymentType, note = '') {
 
 export async function createPurchase(closureId,values,parts) {
   const {data,error}=await db().rpc('yori_create_purchase_units',{p_closure:closureId,p_values:values,p_parts:parts});
+  fail(error);return data;
+}
+
+export async function saveVisualProducts(clientId,items,revision) {
+  const {data,error}=await db().rpc('yori_save_visual_products',{p_client:clientId,p_items:items,p_revision:revision});
+  fail(error);return data;
+}
+export async function createVisualPurchase(closureId,values,parts) {
+  const {data,error}=await db().rpc('yori_create_purchase_visual',{p_closure:closureId,p_values:values,p_parts:parts});
   fail(error);return data;
 }
 

@@ -1,5 +1,5 @@
-import { quantityState, validatePending, pendingEditor, readPending } from './quantities.js';
-import { updateRecord, deleteRecord, addCaptures, signedCaptureUrls, savePartUnits } from './database.js';
+import { quantityState, validatePending, pendingEditor, readPending } from './quantities.js?v=20261028-productos';
+import { updateRecord, deleteRecord, addCaptures, signedCaptureUrls, savePartUnits } from './database.js?v=20261028-productos';
 
 // Only business fields are editable; ownership and relationships stay protected.
 const choices = {
@@ -42,6 +42,9 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
     const row = rows(table).find(r => r.id === id);
     if (!row) return toast('Este registro ya no está disponible. Actualiza la página.');
     const person = table === 'clients' ? row : table === 'purchase_parts' ? rows('clients').find(c=>c.id===row.client_id) : null;
+    if((table==='incidents'&&row.visual_adjustment)||(table==='purchase_parts'&&person?.visual_products?.some(i=>i.part_id===id))) {
+      document.dispatchEvent(new CustomEvent('visual-manage',{detail:{clientId:row.client_id}}));return;
+    }
     editing = { table, id, row: { ...row }, clientRevision: person?.updated_at };
 
     $('#editRecordTitle').textContent = `Editar ${schemas[table][0]}`;
@@ -55,7 +58,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
       return `<label>${esc(f.label)}${control}</label>`;
     }).join('');
     $('#editRecordNote').textContent = table === 'purchase_parts' ? 'Los descuentos se corrigen por separado en «Incidencias y descuentos». Cambiar el estado no elimina descuentos existentes.' : 'Los saldos y el comprobante se actualizarán al guardar.';
-    if(person) {
+    if(person && !Array.isArray(person.visual_products)) {
       $('#editRecordFields').insertAdjacentHTML('beforeend', '<div class="quantity-edit-summary"></div>'+pendingEditor(person.pending_products || []));
       const updateSummary=()=>{
         const input=$('#editRecordFields input[name="'+(table==='clients'?'product_quantity':'purchased_quantity')+'"]');
@@ -102,6 +105,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
   async function remove(table, id) {
     const row = rows(table).find(r=>r.id === id);
     if (!row) return;
+    if(table==='incidents'&&row.visual_adjustment){document.dispatchEvent(new CustomEvent('visual-manage',{detail:{clientId:row.client_id}}));return;}
     const effects = {
       clients:'También se eliminarán sus pagos, capturas, partes, incidencias y libras. Las compras compartidas y su costo se conservarán.',
       order_closures:'Se eliminarán TODAS las personas, pagos, capturas, compras, partes, incidencias y libras de este cierre terminado. Se liberará un lugar para otro cierre. Los demás cierres se conservan.',
@@ -160,7 +164,7 @@ export function setupManagement({ state, refresh, toast, escapeHTML: esc, money,
         const person=table==='clients'?{...row,...values}:rows('clients').find(c=>c.id===row.client_id);
         const q=quantityState(person,rows('purchase_parts').map(p=>table==='purchase_parts'&&p.id===id?{...p,...values}:p));
         if(q.excess)throw new Error('Lo comprado supera el total de unidades. Corrige primero las compras anteriores.');
-        const pending=q.known&&q.remaining===0?[]:validatePending(readPending($('#editRecordFields')),q.remaining,table==='purchase_parts');
+        const pending=Array.isArray(person.visual_products)||q.known&&q.remaining===0?[]:validatePending(readPending($('#editRecordFields')),q.remaining,table==='purchase_parts');
         if(table==='clients') { values.pending_products=pending; result=await updateRecord(table,id,values,row.updated_at); }
         else result=await savePartUnits(id,values,pending,editing.clientRevision);
       } else result = await updateRecord(table,id,values);

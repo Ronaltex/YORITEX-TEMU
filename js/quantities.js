@@ -6,8 +6,9 @@ export function quantityState(client, parts) {
   const bought=rows.reduce((sum,p)=>sum+(isQuantity(p.purchased_quantity)?p.purchased_quantity:0),0);
   const total=isQuantity(client.product_quantity)?client.product_quantity:null;
   const known=total!==null&&!unknown.length;
-  const remaining=known?Math.max(0,total-bought):null;
-  return {total,bought,unknown,known,remaining,excess:total!==null&&bought>total,
+  const excluded=(client.visual_products||[]).filter(i=>i.state==='not_bought').length;
+  const remaining=known?Math.max(0,total-bought-excluded):null;
+  return {total,bought,excluded,unknown,known,remaining,excess:total!==null&&bought+excluded>total,
     pending:Array.isArray(client.pending_products)?client.pending_products:[]};
 }
 export function validatePending(items, remaining, required=true) {

@@ -1,15 +1,16 @@
+import { setupVisualProducts } from './visual-products.js?v=20261028-productos';
 import { moneyRound, freightPolicy, freightCharge, interestCharge, pricingFor, minimumText } from './pricing.js';
-import { quantityState, validatePending, pendingEditor, readPending, bindPendingEditors } from './quantities.js';
+import { quantityState, validatePending, pendingEditor, readPending, bindPendingEditors } from './quantities.js?v=20261028-productos';
 import { financialSummary, pendingNotices } from './dashboard.js';
 import { captureRows as getCaptureRows } from './invoice-layout.js';
-import { setupManagement } from './management.js?v=20261028-cierres';
+import { setupManagement } from './management.js?v=20261028-productos';
 import {
   isConfigured, getSession, onAuthChange, signIn, signOut, sendPasswordReset, updatePassword,
   ensureSettings, updateSettings, listClosures, createClosure, createClient,
-  addPayment, createPurchase, registerArrival, addWeight, setClientClosed,
+  addPayment, createPurchase, createVisualPurchase, registerArrival, addWeight, setClientClosed,
   loadClosure, signedCaptureUrls, subscribeToChanges, confirmPrice
-} from './database.js';
-import { generateInvoiceBlob, downloadBlob, copyImage, shareImage } from './comprobante.js';
+} from './database.js?v=20261028-productos';
+import { generateInvoiceBlob, downloadBlob, copyImage, shareImage } from './comprobante.js?v=20261028-productos';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -35,6 +36,8 @@ const state = {
 };
 
 bindPendingEditors();
+const visual = setupVisualProducts({state,refresh:()=>refreshClosures(state.selectedClosureId),toast});
+document.addEventListener('visual-manage',event=>visual.open(event.detail.clientId).catch(e=>toast(e.message)));
 const management = setupManagement({ state, refresh: () => refreshClosures(state.selectedClosureId), toast, escapeHTML, money, quantitiesChanged: () => { if ($('#purchaseDialog').open) { openPurchaseDialog(true); toast('Cantidades actualizadas. Vuelve a seleccionar las personas de esta compra.'); } } });
 
 function toast(message) {
@@ -120,7 +123,7 @@ function partLabel(part) {
 
 function clientAction(finance) {
   const id=finance.client.id;
-  let html='<button data-action="payment" data-client="'+id+'">Registrar pago</button><button data-action="weight" data-client="'+id+'">'+(finance.totalWeight?'Registrar otra entrega':'Registrar libras')+'</button>';
+  let html='<button data-action="visual" data-client="'+id+'">'+(finance.quantity.known&&finance.quantity.remaining>0?'Pendiente de comprar: '+finance.quantity.remaining+' · Ver / descontar':'Productos · Corregir / no llegó')+'</button><button data-action="payment" data-client="'+id+'">Registrar pago</button><button data-action="weight" data-client="'+id+'">'+(finance.totalWeight?'Registrar otra entrega':'Registrar libras')+'</button>';
   if(finance.unresolved.length) html+='<button class="main-action" data-action="arrival" data-client="'+id+'">Registrar llegada</button>';
   if(finance.client.is_closed)html+='<button data-action="reopen-client" data-client="'+id+'">Reabrir</button>';
   else if(finance.totalWeight && finance.due<=.009 && !finance.unresolved.length && !(finance.quantity.known&&finance.quantity.remaining>0) && finance.pricing.confirmed && !finance.pricing.review) html+='<button data-action="close-client" data-client="'+id+'">Finalizar cliente</button>';
@@ -450,57 +453,27 @@ $('#copyMessageBtn').addEventListener('click', async () => {
 });
 $('#whatsappMessageBtn').addEventListener('click', () => openWhatsApp(state.activeClient.phone, $('#paymentMessage').textContent));
 
-function openPurchaseDialog(preserve = false) {
-  if(preserve !== true) { $('#purchaseForm').reset(); $('#purchaseDate').value=today(); }
+function openPurchaseDialog(preserve=false) {
+  if(preserve!==true){$('#purchaseForm').reset();$('#purchaseDate').value=today();visual.reset();}
   $('#purchaseError').textContent='';
-  const candidates=state.data.clients.map(client=>({client,q:quantityState(client,state.data.parts)}));
-  const available=candidates.filter(({q})=>!q.known||q.excess||q.remaining>0);
-  const completed=candidates.length-available.length;
-  $('#purchaseClients').innerHTML=available.map(({client,q})=>{
-    const name=escapeHTML(client.name);
-    if(!q.known||q.excess) return '<article class="purchase-client quantity-unconfigured"><div><strong>'+name+'</strong><p>'+(!q.total&&q.total!==0?'Cantidad total por completar.':q.excess?'Revisa las cantidades: lo comprado supera el total.':'Completa las unidades de las compras anteriores.')+'</p>'+management.button('clients',client.id,'edit','Editar persona')+management.button('clients',client.id,'history','Ver compras anteriores')+'</div></article>';
-    return '<article class="purchase-client quantity-client" data-client="'+client.id+'" data-revision="'+escapeHTML(client.updated_at)+'"><input class="include-client" type="checkbox" aria-label="Incluir '+name+'"><div><strong>'+name+'</strong><small>Pedido: '+q.total+' · Comprados: '+q.bought+' · Pendientes: '+q.remaining+'</small>'+ (q.pending.length?'<ul class="quantity-pending-list">'+q.pending.map(item=>'<li>'+item.quantity+' × '+escapeHTML(item.description)+'</li>').join('')+'</ul>':'')+'<label>Unidades compradas ahora<input class="part-quantity" type="number" min="1" max="'+q.remaining+'" step="1" value="'+q.remaining+'" disabled></label><p class="quantity-after"></p><div class="quantity-details" hidden>'+pendingEditor(q.pending)+'</div></div></article>';
-  }).join('')||'<p class="pending-empty">Todo está incluido en compras. No hay productos pendientes.</p>';
-  $('#purchaseQuantitySummary').textContent=completed+' persona(s) con todas sus unidades compradas; no se muestran en la lista.';
+  const all=state.data.clients.map(client=>({client,q:quantityState(client,state.data.parts)}));
+  const available=all.filter(({q})=>!q.known||q.excess||q.remaining>0);
+  $('#purchaseClients').innerHTML=available.map(({client,q})=>'<article class="visual-client"><strong>'+escapeHTML(client.name)+'</strong><p>'+(q.known?'Pedido: '+q.total+' · Comprados: '+q.bought+' · Pendientes: '+q.remaining:'Completa las cantidades de esta persona y sus compras anteriores.')+'</p>'+(q.known&&!q.excess?'<button type="button" class="primary" data-purchase-captures="'+client.id+'">Ver capturas y marcar comprados</button><span class="visual-selected-count" data-count-client="'+client.id+'">Seleccionados: '+visual.summary(client.id)+'</span>':management.button('clients',client.id,'edit','Editar persona')+management.button('clients',client.id,'history','Ver compras anteriores'))+'</article>').join('')||'<p>No quedan productos pendientes de compra.</p>';
+  $('#purchaseQuantitySummary').textContent=(all.length-available.length)+' persona(s) completas; no se muestran. Cada toque sobre un producto coloca su visto para esta compra.';
   $('#purchaseForm [type="submit"]').disabled=!available.some(({q})=>q.known&&!q.excess&&q.remaining>0);
   showDialog('#purchaseDialog');
 }
-$('#newPurchaseBtn').addEventListener('click',openPurchaseDialog);
-$('#newPurchaseBtn2').addEventListener('click',openPurchaseDialog);
-function updatePurchaseQuantityCard(card) {
-  const client=getClient(card.dataset.client), q=quantityState(client,state.data.parts);
-  const selected=card.querySelector('.include-client').checked;
-  const input=card.querySelector('.part-quantity');input.disabled=!selected;
-  const remaining=q.remaining-Number(input.value);
-  card.querySelector('.quantity-after').textContent=selected?'Quedarán '+remaining+' unidad(es) pendientes.':'';
-  card.querySelector('.quantity-details').hidden=!selected||remaining<=0;
-}
-$('#purchaseClients').addEventListener('input',event=>{
-  const card=event.target.closest('.quantity-client');if(card)updatePurchaseQuantityCard(card);
-});
-$('#purchaseClients').addEventListener('change',event=>{
-  const card=event.target.closest('.quantity-client');if(card)updatePurchaseQuantityCard(card);
-});
+$('#newPurchaseBtn').addEventListener('click',()=>openPurchaseDialog());
+$('#newPurchaseBtn2').addEventListener('click',()=>openPurchaseDialog());
+$('#purchaseClients').addEventListener('click',event=>{const button=event.target.closest('[data-purchase-captures]');if(button)visual.open(button.dataset.purchaseCaptures,'purchase').catch(e=>toast(e.message));});
+document.addEventListener('visual-selection',event=>{const label=document.querySelector('[data-count-client="'+event.detail.id+'"]');if(label)label.textContent='Seleccionados: '+event.detail.count;});
 $('#purchaseForm').addEventListener('submit',async event=>{
-  event.preventDefault();
-  if(event.target.dataset.saving)return;
-  $('#purchaseError').textContent='';
-  const submit=event.target.querySelector('[type="submit"]');
-  try {
-    const parts=$$('.quantity-client').filter(card=>card.querySelector('.include-client').checked).map(card=>{
-      const client=getClient(card.dataset.client),q=quantityState(client,state.data.parts);
-      const quantity=Number(card.querySelector('.part-quantity').value);
-      if(!q.known||!Number.isSafeInteger(quantity)||quantity<=0||quantity>q.remaining)throw new Error('Revisa las unidades de '+client.name+'.');
-      const remaining=q.remaining-quantity;
-      const pending=remaining?validatePending(readPending(card),remaining):[];
-      return {client_id:client.id,purchased_quantity:quantity,pending_products:pending,revision:card.dataset.revision};
-    });
-    if(!parts.length)throw new Error('Selecciona al menos una persona con productos comprados.');
-    event.target.dataset.saving='true';submit.disabled=true;
-    await run(()=>createPurchase(state.selectedClosureId,{purchase_date:$('#purchaseDate').value,account_label:$('#purchaseAccount').value.trim(),real_cost:number($('#purchaseCost').value),notes:$('#purchaseNotes').value.trim()},parts),'Compra guardada; cantidades actualizadas.');
-    closeDialog('#purchaseDialog');await refreshSelected();selectTab('purchases');
-  } catch(error) {$('#purchaseError').textContent=error.message;}
-  finally {delete event.target.dataset.saving;submit.disabled=false;}
+ event.preventDefault();if(event.target.dataset.saving)return;const submit=event.target.querySelector('[type="submit"]');$('#purchaseError').textContent='';
+ try{const parts=visual.payload();if(!parts.length)throw new Error('Abre las capturas y toca los productos comprados.');
+  event.target.dataset.saving='true';submit.disabled=true;
+  await run(()=>createVisualPurchase(state.selectedClosureId,{purchase_date:$('#purchaseDate').value,account_label:$('#purchaseAccount').value.trim(),real_cost:number($('#purchaseCost').value),notes:$('#purchaseNotes').value.trim()},parts),'Compra y vistos guardados.');
+  closeDialog('#purchaseDialog');visual.reset();await refreshSelected();selectTab('purchases');
+ }catch(e){$('#purchaseError').textContent=e.message;}finally{delete event.target.dataset.saving;submit.disabled=false;}
 });
 
 function openArrival(clientId, preferredPartId) {
@@ -631,7 +604,10 @@ async function openDetail(clientId) {
   const captureRows = await signedCaptureUrls(finance.captures);
   const captureUrls = captureRows.map(item => item.signed_url);
   const status = statusFor(finance);
-  const incidentText = finance.incidents.map(item => `${item.description}${number(item.deduction) ? ` · descuento ${money(item.deduction)}` : ''}`).join(' · ');
+  const incidentText = [
+    ...finance.incidents.filter(item=>!item.visual_adjustment).map(item => `${item.description}${number(item.deduction) ? ` · descuento ${money(item.deduction)}` : ''}`),
+    ...(client.visual_products||[]).filter(item=>['not_bought','not_arrived'].includes(item.state)).map(item=>'Producto no entregado: '+item.label+(number(item.deduction)?' · − '+money(item.deduction):''))
+  ].join(' · ');
   state.invoiceDetail = {
     closureTitle: state.data.closure.title,
     clientName: client.name,
@@ -645,7 +621,9 @@ async function openDetail(clientId) {
     due: finance.due,
     credit: finance.credit,
     incidentText,
-    captureUrls
+    captureUrls,
+    captureMarks:captureRows.map(c=>(client.visual_products||[]).filter(i=>i.capture_id===c.id)),
+    visualDiscount:finance.incidents.filter(i=>i.visual_adjustment).reduce((n,i)=>n+number(i.deduction),0)
   };
   $('#invoiceClosure').textContent = state.data.closure.title;
   $('#invoiceName').textContent = client.name;
@@ -724,9 +702,9 @@ $('#closureWorkspace').addEventListener('click', async event => {
   const { action, client, part } = button.dataset;
   if (action === 'purchase') {
     openPurchaseDialog();
-    const checkbox = $('#purchaseClients').querySelector('[data-client="'+client+'"] .include-client');
-    if (checkbox) { checkbox.checked = true; updatePurchaseQuantityCard(checkbox.closest('.quantity-client')); }
+    if(client) await visual.open(client,'purchase').catch(e=>toast(e.message));
   }
+  if (action === 'visual') await visual.open(client).catch(e=>toast(e.message));
   if (action === 'price') openPricing(client);
   if (action === 'payment') openPayment(client);
   if (action === 'arrival' || action === 'arrival-part') openArrival(client, part);
@@ -801,6 +779,7 @@ $$('button[value="cancel"]').forEach(button => button.addEventListener('click', 
 }));
 $$('[data-close-dialog]').forEach(button => button.addEventListener('click', () => closeDialog(button.closest('dialog'))));
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => {
+  if(dialog.id==='visualProductsDialog')return;
   if (event.target === dialog) closeDialog(dialog);
 }));
 
